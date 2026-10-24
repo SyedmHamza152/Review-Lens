@@ -142,10 +142,13 @@ class YouTubeAdapter(_SocialAdapter):
             return AdapterResult(self.key, AdapterStatus.BLOCKED,
                                  f"YouTube API refused the key/quota (HTTP {search.status_code}).")
         search.raise_for_status()
-        video_ids = [it["id"]["videoId"] for it in search.json().get("items", []) if "videoId" in it.get("id", {})]
+        videos = {it["id"]["videoId"]: (it.get("snippet", {}) or {}).get("title", "")
+                  for it in search.json().get("items", []) if "videoId" in it.get("id", {})}
         items: list[ReviewItem] = []
-        for vid in video_ids:
+        video_meta: dict[str, dict] = {}
+        for vid, title in videos.items():
             page_token = ""
+            collected_for_video = 0
             while len(items) < max_items:
                 params = {"part": "snippet", "videoId": vid, "maxResults": 50,
                           "textFormat": "plainText", "key": settings.YOUTUBE_API_KEY}
@@ -169,12 +172,24 @@ class YouTubeAdapter(_SocialAdapter):
                         review_date=datetime.fromisoformat(snip["publishedAt"].replace("Z", "+00:00")),
                         author=snip.get("authorDisplayName"),
                         source_url=f"https://www.youtube.com/watch?v={vid}&lc={it['snippet']['topLevelComment']['id']}",
+                        variant=title or None,   # source video title, shown per comment
                     ))
+                    collected_for_video += 1
                 page_token = payload.get("nextPageToken", "")
                 if not page_token:
                     break
+            video_meta[vid] = {
+                "external_id": vid,
+                "name": title or f"YouTube video {vid}",
+                "url": f"https://www.youtube.com/watch?v={vid}",
+                "seller": None,
+                "sold_count_text": None,
+                "review_count": collected_for_video,
+            }
         status = AdapterStatus.SUCCESS if items else AdapterStatus.NO_RESULTS
-        return AdapterResult(self.key, status, items=items[:max_items], data_source="live")
+        result = AdapterResult(self.key, status, items=items[:max_items], data_source="live")
+        result.aggregate_items = list(video_meta.values())
+        return result
 
 
 class XAdapter(_SocialAdapter):

@@ -1,26 +1,16 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ensureBackend, pyFetch } from "@/lib/pyapi";
-import type { PlatformInfo } from "@/lib/types";
 import {
-  AlertTriangle, BarChart3, CheckCircle2, Globe, Loader2, Radio,
-  Search, ShieldCheck, Store, Users, XCircle,
+  BarChart3, Globe, Loader2, Radio, Search, ShieldCheck, Youtube,
 } from "lucide-react";
-
-const PLATFORM_ICON: Record<string, React.ReactNode> = {
-  marketplace: <Store className="size-4 text-primary" />,
-  social: <Users className="size-4 text-primary" />,
-};
 
 export function HomeView({
   onSearch,
@@ -31,8 +21,6 @@ export function HomeView({
 }) {
   const [productName, setProductName] = useState("");
   const [description, setDescription] = useState("");
-  // null => all platforms selected (derived, no effect needed)
-  const [selected, setSelected] = useState<Set<string> | null>(null);
   const [formError, setFormError] = useState("");
 
   const { data: backend } = useQuery({
@@ -41,15 +29,11 @@ export function HomeView({
     enabled: !backendOk,
   });
 
-  const { data: platforms, isLoading } = useQuery({
+  const { data: platforms } = useQuery({
     queryKey: ["platforms"],
-    queryFn: () => pyFetch<{ platforms: PlatformInfo[] }>("/api/platforms"),
+    queryFn: () => pyFetch<{ platforms: { key: string; name: string }[] }>("/api/platforms"),
     enabled: backendOk || !!backend?.healthy,
   });
-
-  const allKeys = platforms?.platforms.map((p) => p.key) ?? [];
-  const activeSelection: Set<string> = selected ?? new Set(allKeys);
-  const liveCount = platforms?.platforms.filter((p) => p.live_capability === "live").length ?? 0;
 
   const search = useMutation({
     mutationFn: () =>
@@ -58,22 +42,13 @@ export function HomeView({
         body: JSON.stringify({
           product_name: productName,
           description: description || null,
-          platforms: activeSelection.size && activeSelection.size !== allKeys.length
-            ? Array.from(activeSelection)
-            : null,
+          platforms: null, // YouTube is the only registered platform
           include_sample: false, // live platform data only
         }),
       }),
     onSuccess: (data) => onSearch(data.job_id, productName),
     onError: (e: Error) => setFormError(e.message),
   });
-
-  const toggle = (key: string) => {
-    const base = new Set(activeSelection);
-    if (base.has(key)) base.delete(key);
-    else base.add(key);
-    setSelected(base);
-  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,25 +60,22 @@ export function HomeView({
     search.mutate();
   };
 
-  const marketplaces = platforms?.platforms.filter((p) => p.type === "marketplace") ?? [];
-  const socials = platforms?.platforms.filter((p) => p.type === "social") ?? [];
-
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6">
       {/* Hero */}
       <section className="pt-10 text-center sm:pt-14">
         <Badge variant="secondary" className="mb-4 gap-1.5">
           <Radio className="size-3 text-emerald-600" />
-          {liveCount} live sources · Reddit · Hacker News · Daraz PK · EN + اردو + Roman Urdu
+          YouTube-only intelligence · real comments · EN + اردو + Roman Urdu
         </Badge>
         <h1 className="mx-auto max-w-3xl text-3xl font-bold tracking-tight sm:text-5xl">
           How do customers <span className="text-primary">really</span> feel about a product?
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-balance text-sm text-muted-foreground sm:text-base">
-          Search any product and ReviewLens collects available reviews and public
-          discussions across e-commerce marketplaces and social media, then analyzes
-          sentiment in English, Urdu and Roman Urdu — including mixed-language comments —
-          with aspect-level insights and an honest, evidence-based verdict.
+          Search any product and ReviewLens collects real comments from YouTube product
+          review videos, then analyzes sentiment in English, Urdu and Roman Urdu —
+          including mixed-language comments — with aspect-level insights, source-video
+          links and an honest, evidence-based verdict.
         </p>
       </section>
 
@@ -142,41 +114,18 @@ export function HomeView({
                 distinguish between models, generations and variants.
               </p>
 
-              {/* Platform picker */}
-              <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label className="text-sm font-medium">Platforms to search</Label>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" size="sm"
-                      onClick={() => setSelected(new Set(allKeys))}>
-                      Select all
-                    </Button>
-                    <Button type="button" variant="outline" size="sm"
-                      onClick={() => setSelected(new Set())}>
-                      Clear
-                    </Button>
-                  </div>
-                </div>
-                {isLoading ? (
-                  <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                    {Array.from({ length: 12 }).map((_, i) => (
-                      <Skeleton key={i} className="h-9" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="grid gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
-                      {marketplaces.map((p) => (
-                        <PlatformChip key={p.key} p={p} selected={activeSelection.has(p.key)} onToggle={() => toggle(p.key)} />
-                      ))}
-                    </div>
-                    <div className="grid gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
-                      {socials.map((p) => (
-                        <PlatformChip key={p.key} p={p} selected={activeSelection.has(p.key)} onToggle={() => toggle(p.key)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
+              {/* Source platform (YouTube only by product decision) */}
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-4">
+                <Label className="text-sm font-medium">Comments source:</Label>
+                {platforms?.platforms.map((p) => (
+                  <Badge key={p.key} variant="outline"
+                    className="border-emerald-500/40 text-emerald-700">
+                    <Youtube className="mr-1 size-3" /> {p.name} · live
+                  </Badge>
+                ))}
+                <span className="text-xs text-muted-foreground">
+                  Every comment links to the video it came from.
+                </span>
               </div>
 
               {/* Live data notice (replaces the old sample-data toggle) */}
@@ -184,13 +133,13 @@ export function HomeView({
                 <div className="space-y-0.5">
                   <Label className="flex items-center gap-2 text-sm font-medium">
                     <Radio className="size-4 text-emerald-600" />
-                    Live platform data only
+                    Live YouTube data only
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Every review, comment and rating shown is collected <b>live</b> from platform
-                    APIs — Reddit via the public archive, Hacker News via its public search API,
-                    and Daraz PK storefront rating aggregates. Platforms that require API
-                    credentials (YouTube, X, Amazon…) stay clearly marked and are never simulated.
+                    Every comment shown is collected <b>live</b> from real YouTube review
+                    videos via the public YouTube web API (official Data API v3 when a key
+                    is configured). Nothing is ever simulated; if YouTube cannot be
+                    reached, the report says so honestly.
                   </p>
                 </div>
               </div>
@@ -216,60 +165,16 @@ export function HomeView({
 
       {/* How it works */}
       <section className="mt-12 grid gap-4 pb-12 sm:grid-cols-2 lg:grid-cols-4">
-        <Feature icon={<Search className="size-5" />} title="1 · Collect"
-          text="Live platform APIs collect reviews, ratings and public comments. Each adapter is independent — one failure never blocks the rest, and integration status is always shown honestly. Nothing is ever simulated." />
+        <Feature icon={<Youtube className="size-5" />} title="1 · Collect"
+          text="Real comments are collected live from YouTube product review videos via the public YouTube web API (official Data API v3 when a key is configured). Every comment keeps a link to its source video. Nothing is ever simulated." />
         <Feature icon={<Globe className="size-5" />} title="2 · Understand"
           text="Language detection for English, Urdu script, Roman Urdu and mixed comments, with spelling-variant normalization (bohat/bahut/bohot…) and confidence scores." />
         <Feature icon={<BarChart3 className="size-5" />} title="3 · Analyze"
-          text="Context-aware sentiment (positive / negative / neutral / mixed), aspect-based insights (battery, delivery, price, authenticity…), spam filtering and deduplication." />
-        <Feature icon={<ShieldCheck className="size-5" />} title="4 · Compare honestly"
-          text="Cross-platform comparison with sample sizes, low-sample warnings and a transparent scoring methodology. No invented data, ever." />
+          text="Context-aware sentiment (positive / negative / neutral / mixed), aspect-based insights (quality, price, durability, authenticity…), spam filtering and deduplication." />
+        <Feature icon={<ShieldCheck className="size-5" />} title="4 · Report honestly"
+          text="Every analyzed comment counts toward the verdict, whatever the sample size - with low-sample warnings, source-video links and a transparent scoring methodology. No invented data, ever." />
       </section>
     </div>
-  );
-}
-
-function PlatformChip({ p, selected, onToggle }: {
-  p: PlatformInfo;
-  selected: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <label
-          className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
-            selected ? "border-primary/50 bg-primary/5 font-medium" : "bg-background"
-          }`}
-        >
-          <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Toggle ${p.name}`} />
-          {PLATFORM_ICON[p.type]}
-          <span className="truncate">{p.name}</span>
-          {p.live_capability === "live" ? (
-            <span className="ml-auto shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
-              LIVE
-            </span>
-          ) : p.has_credentials ? (
-            <CheckCircle2 className="ml-auto size-3.5 shrink-0 text-emerald-600" />
-          ) : p.live_capability === "not_available" ? (
-            <XCircle className="ml-auto size-3.5 shrink-0 text-muted-foreground/60" />
-          ) : (
-            <AlertTriangle className="ml-auto size-3.5 shrink-0 text-amber-500/80" />
-          )}
-        </label>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="max-w-64 text-xs">
-        <p className="font-medium">{p.name}</p>
-        <p className="mt-1 text-muted-foreground">{p.access_mode}</p>
-        <p className="mt-1">{p.notes}</p>
-        {p.optional_env && p.optional_env.length > 0 && (
-          <p className="mt-1.5 border-t border-border/60 pt-1.5">
-            <span className="text-amber-600 dark:text-amber-400">Unlocks more data with:</span>{" "}
-            <code className="text-[10px]">{p.optional_env.join(" · ")}</code>
-          </p>
-        )}
-      </TooltipContent>
-    </Tooltip>
   );
 }
 

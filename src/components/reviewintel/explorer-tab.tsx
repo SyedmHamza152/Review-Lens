@@ -13,8 +13,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { pyFetch } from "@/lib/pyapi";
-import type { BelowMinimumPlatform, PaginatedReviews, ReviewRow, SentimentLabel } from "@/lib/types";
-import { ChevronUp, ExternalLink, Filter, Info, Languages, Search, Sparkles } from "lucide-react";
+import type { PaginatedReviews, ReviewRow, SentimentLabel } from "@/lib/types";
+import { ChevronUp, ExternalLink, Filter, Languages, Search, Sparkles } from "lucide-react";
 
 const SENTIMENT_BADGE: Record<string, string> = {
   positive: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
@@ -23,7 +23,7 @@ const SENTIMENT_BADGE: Record<string, string> = {
   mixed: "border-amber-500/40 bg-amber-500/10 text-amber-700",
 };
 
-export function ExplorerTab({ jobId, belowMinimum = [] }: { jobId: string; belowMinimum?: BelowMinimumPlatform[] }) {
+export function ExplorerTab({ jobId }: { jobId: string }) {
   const [platform, setPlatform] = useState("all");
   const [sentiment, setSentiment] = useState("all");
   const [language, setLanguage] = useState("all");
@@ -63,19 +63,6 @@ export function ExplorerTab({ jobId, belowMinimum = [] }: { jobId: string; below
 
   return (
     <div className="space-y-4">
-      {belowMinimum.length > 0 ? (
-        <div className="space-y-2">
-          {belowMinimum.map((b) => (
-            <div key={b.platform}
-              className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-              <Info className="mt-0.5 size-4 shrink-0 text-amber-600" />
-              <p>
-                <b>{b.platform_name}:</b> {b.message}
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : null}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -90,7 +77,7 @@ export function ExplorerTab({ jobId, belowMinimum = [] }: { jobId: string; below
                 aria-label="Search comments"
               />
             </div>
-            <SelectBox value={platform} onChange={(v) => { setPlatform(v); setPage(1); }} label="Platform"
+            <SelectBox value={platform} onChange={(v) => { setPlatform(v); setPage(1); }} label="Source"
               options={PLATFORMS} />
             <SelectBox value={sentiment} onChange={(v) => { setSentiment(v); setPage(1); }} label="Sentiment"
               options={SENTIMENTS} />
@@ -249,12 +236,12 @@ function ReviewRowItem({ r, expanded, onToggle }: { r: ReviewRow; expanded: bool
               ) : null}
               <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                 <span>relevance {(r.relevance * 100).toFixed(0)}%</span>
-                <span>variant: {r.variant ?? "—"}</span>
+                {r.variant ? <span className="max-w-64 truncate" title={r.variant}>video: {r.variant}</span> : null}
                 <span>source: {r.data_source === "sample" ? "SAMPLE (synthetic)" : "live API"}</span>
                 {r.source_url ? (
                   <a href={r.source_url} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-primary hover:underline">
-                    open source <ExternalLink className="size-3" />
+                    open video <ExternalLink className="size-3" />
                   </a>
                 ) : (
                   <span>source link n/a (sample data)</span>
@@ -295,10 +282,7 @@ function SelectBox({ value, onChange, label, options }: {
 
 const PLATFORMS = [
   { value: "all", label: "All" },
-  ...["daraz", "amazon", "alibaba", "aliexpress", "temu", "shein",
-    "reddit", "youtube", "x", "facebook", "instagram", "tiktok"].map((p) => ({
-    value: p, label: p === "x" ? "X" : p[0].toUpperCase() + p.slice(1),
-  })),
+  { value: "youtube", label: "YouTube" },
 ];
 const SENTIMENTS: { value: string; label: string }[] = [
   { value: "all", label: "All" },

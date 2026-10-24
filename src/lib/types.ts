@@ -61,20 +61,22 @@ export interface Verdict {
   avg_confidence: number;
   methodology_note: string;
   basis?: {
-    min_comments_required: number;
     platforms_included: string[];
     platforms_excluded: string[];
     analyzed_comments_total: number;
     analyzed_comments_for_verdict: number;
   };
-  minimum_note?: string;
 }
 
-export interface BelowMinimumPlatform {
-  platform: string;
-  platform_name: string;
-  analyzed_comments: number;
-  message: string;
+/** Source video a set of YouTube comments came from. */
+export interface SourceVideo {
+  video_id: string;
+  title: string;
+  url: string;
+  channel: string | null;
+  views_text: string | null;
+  comments_collected: number;
+  comments_analyzed: number;
 }
 
 export interface DistributionItem {
@@ -173,18 +175,17 @@ export interface Report {
     collected: number;
     analyzed: number;
     analyzed_for_verdict?: number;
-    min_comments_required?: number;
     spam_filtered: number;
     low_relevance_excluded: number;
     platforms_with_data: number;
-    platforms_meeting_minimum?: number;
     platforms_requested: number;
     avg_confidence: number;
+    source_videos?: number;
   };
   verdict: Verdict;
   distribution: DistributionItem[];
   summary: string;
-  below_minimum_platforms: BelowMinimumPlatform[];
+  source_videos: SourceVideo[];
   aspects: AspectStat[];
   advantages: PhraseCount[];
   complaints: PhraseCount[];
@@ -198,8 +199,6 @@ export interface Report {
     mixed_rule: string;
     min_sample_for_verdict: number;
     low_sample_platform_threshold: number;
-    min_comments_for_analysis?: number;
-    min_comments_rule?: string;
     confidence: string;
     disclaimers: string[];
   };

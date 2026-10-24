@@ -12,9 +12,13 @@ def test_health(client):
 def test_platforms_listing(client):
     r = client.get("/api/platforms")
     assert r.status_code == 200
-    keys = {p["key"] for p in r.json()["platforms"]}
-    assert {"daraz", "amazon", "alibaba", "aliexpress", "temu", "shein",
-            "reddit", "youtube", "x", "facebook", "instagram", "tiktok"} <= keys
+    platforms = r.json()["platforms"]
+    keys = {p["key"] for p in platforms}
+    # YouTube-only product decision: no other platform is exposed.
+    assert keys == {"youtube"}
+    yt = next(p for p in platforms if p["key"] == "youtube")
+    assert yt["live_capability"] == "live"
+    assert yt["status"] == "success"
 
 
 def _search(client, name="Samsung Galaxy S25 Ultra", desc="512GB, Titanium Gray"):
@@ -39,24 +43,18 @@ def test_full_search_flow(client):
     job = _wait_completed(client, job_id)
     assert job["status"] == "completed"
     assert job["progress"] == 100
-    assert len(job["platforms"]) == 13
+    # YouTube-only product decision: every job uses exactly one platform.
+    assert len(job["platforms"]) == 1
+    assert job["platforms"][0]["platform"] == "youtube"
     # sample fallback marked transparently
     assert any(p["status"] in ("success", "success_sample") for p in job["platforms"])
 
     rep = client.get(f"/api/jobs/{job_id}/report").json()
     assert rep["totals"]["analyzed"] > 0
-    # 50-comment minimum: verdict only from platforms meeting the minimum;
-    # below-minimum platforms must carry the exact honest message.
-    qualifying = [c for c in rep["comparison"] if c["analysis_processed"]]
-    if qualifying:
-        assert abs(sum(d["pct"] for d in rep["distribution"]) - 100) < 1.5
-        assert rep["languages"], "language breakdown missing"
-    else:
-        assert rep["verdict"]["label"] == "Insufficient Data"
-        assert rep["below_minimum_platforms"], \
-            "below-minimum platforms must be listed with the exact message"
-        assert all("50-comment minimum" in b["message"]
-                   for b in rep["below_minimum_platforms"])
+    # No 50-comment minimum: every analyzed comment counts toward the verdict.
+    assert all(c["analysis_processed"] for c in rep["comparison"])
+    assert abs(sum(d["pct"] for d in rep["distribution"]) - 100) < 1.5
+    assert rep["languages"], "language breakdown missing"
     assert rep["verdict"]["label"] in {
         "Generally Positive", "Mostly Positive with Some Concerns", "Mixed Feedback",
         "Mostly Negative with Some Positives", "Generally Negative", "Insufficient Data",

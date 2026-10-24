@@ -41,7 +41,7 @@ class PlatformInfo(BaseModel):
 class SearchRequest(BaseModel):
     product_name: str = Field(min_length=2, max_length=300)
     description: str | None = Field(default=None, max_length=2000)
-    platforms: list[str] | None = None  # None / ["all"] -> all platforms
+    platforms: list[str] | None = None  # None / ["all"] -> all platforms (YouTube only); others are clamped away
     include_sample: bool = False  # live data only, by default; sample corpus is test-only
 
 

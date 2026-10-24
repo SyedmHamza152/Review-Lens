@@ -1,9 +1,15 @@
 # ReviewLens — AI-Powered Product Review Intelligence Platform
 
-Cross-platform product review intelligence: search a product, collect available reviews
-and public discussions from e-commerce marketplaces and social platforms, analyze
-sentiment in **English, Urdu script, Roman Urdu and mixed-language comments**, compare
-feedback across platforms, and get an evidence-based verdict with full traceability.
+YouTube-powered product review intelligence: search a product, collect **real comments
+from YouTube product review videos**, analyze sentiment in **English, Urdu script,
+Roman Urdu and mixed-language comments**, trace every comment back to its source
+video, and get an evidence-based verdict with full traceability.
+
+> **Product scope (2026-10):** the platform is **YouTube-only** by product decision —
+> all other marketplace/social adapters were removed from the product surface
+> (their code remains in `backend/app/integrations/`, unregistered, for possible
+> future re-enablement). There is **no minimum-comment restriction**: every analyzed
+> comment counts toward the verdict, whatever the sample size.
 
 Stack: **Next.js 16 + TypeScript + Tailwind + shadcn/ui + Recharts** (frontend) ·
 **Python FastAPI + SQLAlchemy + scikit-learn + ReportLab** (backend).
@@ -21,7 +27,7 @@ Browser ──> Caddy gateway (:81, preview URL)
 ```
 
 - The **frontend is a single page** (`src/app/page.tsx`) with a state machine:
-  home → search progress → dashboard (Overview / Platform comparison / Review
+  home → search progress → dashboard (Overview / Source comparison / Review
   explorer / AI assistant / Methodology). Reports survive refresh via URL hash
   (`#/job/<id>`).
 - The **Python backend** (`backend/app`) is spawned as a managed child of the
@@ -38,12 +44,12 @@ Browser ──> Caddy gateway (:81, preview URL)
 | `app/api/routes.py` | REST API under `/api` |
 | `app/services/orchestrator.py` | job lifecycle, parallel adapter collection (adapter failures are isolated) |
 | `app/services/pipeline.py` | language → relevance → spam → dedup → sentiment → aspects → persist |
-| `app/services/aggregation.py` | verdict scoring, platform comparison, aspects, languages, trends |
-| `app/services/exporter.py` | CSV + PDF report |
+| `app/services/aggregation.py` | verdict scoring, source comparison, aspects, languages, trends, source videos |
+| `app/services/exporter.py` | CSV + PDF report (incl. source-video table) |
 | `app/nlp/` | language detection, Roman-Urdu normalization, sentiment engine, ABSA, gloss translation |
-| `app/integrations/live_sources.py` | live credential-free connectors: Reddit (public archive), Hacker News (Algolia), Daraz PK catalog |
-| `app/integrations/daraz_open_platform.py` | official Daraz Open Platform client (LAZOP HMAC-SHA256 signing, seller products + review APIs, 7-day window walk, batched review bodies) |
-| `app/integrations/` | 13 platform adapters (sample corpus kept for tests/eval only) |
+| `app/integrations/live_sources.py` | YouTube InnerTube live collector (search videos → harvest comments, per-video metadata) |
+| `app/integrations/daraz_open_platform.py` | official Daraz Open Platform client (unregistered; kept for future scope changes) |
+| `app/integrations/` | adapter library — **only `YouTubeAdapter` is registered** (sample corpus kept for tests/eval only) |
 
 ### Database (SQLAlchemy 2.0)
 
@@ -99,31 +105,24 @@ when model downloads are available.
 
 ## 3. Data access reality (no fabricated data)
 
-Verified live from this deployment (2026-10):
+**Registered platform: YouTube only.** Verified live from this deployment (2026-10):
 
-| Platform | Access mode | Status without credentials |
+| Platform | Access mode | Status |
 |---|---|---|
-| YouTube | **LIVE comments**: public YouTube web client API (InnerTube — the same search + comments endpoints a browser session uses); official Data API v3 used automatically when `YOUTUBE_API_KEY` is set | `success` (live) |
-| Reddit | **LIVE**: public Arctic-Shift archive API (posts + comments, incl. Pakistani subreddits); official OAuth API used automatically when creds configured | `success` (live) |
-| Hacker News | **LIVE**: public HN Algolia search API (stories + comments) | `success` (live) |
-| Daraz | **LIVE rating aggregates**: public storefront catalog JSON (avg rating, review counts, prices, sellers). **Written review TEXT: official Daraz Open Platform API** (`app/integrations/daraz_open_platform.py`) — LAZOP protocol, HMAC-SHA256-signed requests to `https://api.daraz.pk/rest` (`/products/get` → `/review/seller/history/list` → `/review/seller/list/v2`). Gateway **verified reachable** from this deployment (signed probe returns proper business errors). Activates automatically when `DARAZ_APP_KEY` + `DARAZ_APP_SECRET` + `DARAZ_ACCESS_TOKEN` are set; review APIs are seller-scoped (the authorized seller's own listings — Daraz offers no cross-seller public review API). Without creds: aggregates live + exact setup message | `success` (aggregates live); review text on Open Platform activation |
-| Amazon | PA-API 5 (ratings/review counts; review text restricted by policy) | `needs_credentials` |
-| Alibaba / AliExpress | Open Platform APIs | `needs_credentials` |
-| X | API v2 recent search (paid tier for reads) | `needs_credentials` |
-| Facebook / Instagram | Graph API (search retired / App Review) | `not_available` |
-| Temu / SHEIN | **No public API; ToS forbids scraping** | `unsupported` (by design) |
+| YouTube | **LIVE comments**: public YouTube web client API (InnerTube — the same search + comments endpoints a browser session uses); official Data API v3 used automatically when `YOUTUBE_API_KEY` is set. Comments are harvested across the top `{product} review` videos; every comment stores its **source-video URL + title**, and the report includes a **Source videos** card/table with links, channels, view counts and per-video comment counts | `success` (live) |
 
-### 50-comment minimum rule
+Other adapters (`Reddit`, `Daraz`, `Amazon`, …) remain in the codebase but are **not
+registered** — they never appear in `/api/platforms`, the search form, or reports.
+`POST /api/search` clamps any requested platform list to YouTube.
 
-A platform needs **at least 50 real comments** (`MIN_COMMENTS_FOR_ANALYSIS`)
-before its sentiment results are processed into the verdict. Platforms below
-the minimum are never padded or simulated: the report displays the exact
-message — *"Only N real comments found on {platform} — below the 50-comment
-minimum, so sentiment analysis cannot be processed for this platform"* — and
-the raw comments remain viewable in the Comments tab / Review explorer. The
-verdict, aspects, language split, trends and platform ranking are computed
-from qualifying platforms only; if no platform qualifies the verdict is
-**Insufficient Data** with per-platform counts stated.
+### Verdict rules (50-comment minimum REMOVED)
+
+The former 50-comment-per-platform minimum was **removed by product decision**:
+**every analyzed comment counts toward the verdict, whatever the sample size.**
+Sample-size honesty is preserved through the `low_sample` flags (default < 10
+comments) shown next to results, and the report always states the exact analyzed
+count. If fewer than `MIN_ANALYZED_FOR_VERDICT` (5) usable comments exist, the
+verdict is **Insufficient Data** — stated, never padded.
 
 - The synthetic sample corpus is **test/eval only** — it can no longer appear in
   app reports. `POST /api/search` defaults to `include_sample=false` and the UI
@@ -154,7 +153,7 @@ alembic upgrade head      # or let init_db create tables automatically
 Run backend standalone: `cd backend && python3 -m uvicorn app.main:app --port 8317`
 In the sandbox preview, the frontend starts it automatically via `/api/py-health`.
 
-Run tests: `cd backend && python3 -m pytest tests/ -q` (51 tests).
+Run tests: `cd backend && python3 -m pytest tests/ -q` (75 tests).
 
 ### Environment variables (`backend/.env`)
 

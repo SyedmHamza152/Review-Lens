@@ -181,16 +181,13 @@ def test_aggregate_items_persisted(db):
 
 
 def test_platform_listing_metadata():
+    """YouTube-only product decision: only YouTube is registered/exposed."""
     from app.integrations.registry import platform_listing
-    listing = {p["key"]: p for p in platform_listing()}
-    assert listing["reddit"]["live_capability"] == "live"
-    assert listing["hackernews"]["live_capability"] == "live"
-    assert listing["daraz"]["live_capability"] == "live"
-    assert listing["youtube"]["live_capability"] == "live"
-    assert listing["temu"]["live_capability"] == "not_available"
-    assert listing["temu"]["status"] == "unsupported"
-    # live sources sort first
-    assert platform_listing()[0]["live_capability"] == "live"
+    listing = platform_listing()
+    assert {p["key"] for p in listing} == {"youtube"}
+    assert listing[0]["live_capability"] == "live"
+    assert listing[0]["status"] == "success"
+    assert listing[0]["optional_env"] == []  # live credential-free, nothing to unlock
 
 
 # ---------------------------------------------------------------- youtube
@@ -298,66 +295,94 @@ def test_daraz_review_text_blocked_note_is_honest():
     assert "not accessible" in note and "anti-bot" in note
 
 
-def test_min_50_policy_excludes_below_minimum_platforms(db):
-    """Platforms below 50 real comments carry the message and are NOT analyzed."""
-    import json as _json
-    from app.models import JobPlatformStatus, SearchJob
+def test_no_minimum_and_source_videos(db):
+    """The 50-comment minimum is REMOVED: every analyzed comment counts toward
+    the verdict regardless of sample size, and YouTube source videos (with
+    links + per-video counts) are part of the report."""
+    from app.models import SearchJob
     from app.services import aggregation
 
-    job = SearchJob(id="min50test", product_name="cricket bat",
-                    platforms_requested='["youtube","reddit","daraz"]', status="completed")
+    job = SearchJob(id="nomin", product_name="cricket bat",
+                    platforms_requested='["youtube"]', status="completed")
     db.add(job)
-    db.add(JobPlatformStatus(job_id="min50test", platform_key="youtube",
-                             platform_name="YouTube", status="success", items_collected=60))
-    db.add(JobPlatformStatus(job_id="min50test", platform_key="reddit",
-                             platform_name="Reddit", status="success", items_collected=3))
-    db.add(JobPlatformStatus(job_id="min50test", platform_key="daraz",
-                             platform_name="Daraz", status="success", items_collected=0))
     db.commit()
 
     from app.integrations.base import AdapterResult
-    texts = [f"cricket bat number {i} feels {'great and powerful' if i % 2 else 'poor and weak'}"
-             for i in range(60)]
-    yt_items = [ls.ReviewItem(external_id=f"y{i}", text=t, relevance_hint=0.9)
-                for i, t in enumerate(texts)]
-    reddit_items = [ls.ReviewItem(external_id=f"r{i}", text=f"bat {i} is {'nice' if i % 2 else 'bad'}",
-                                  relevance_hint=0.9) for i in range(3)]
-    process_adapter_result(db, "min50test",
-                           AdapterResult("youtube", AdapterStatus.SUCCESS, items=yt_items),
-                           {"bat", "cricket"})
-    process_adapter_result(db, "min50test",
-                           AdapterResult("reddit", AdapterStatus.SUCCESS, items=reddit_items),
-                           {"bat", "cricket"})
+    # Only 7 comments - far below the old minimum of 50; must still be analyzed.
+    yt_items = [ls.ReviewItem(external_id=f"y{i}", text=f"bat {i} is {'nice' if i % 2 else 'bad'}",
+                              source_url="https://www.youtube.com/watch?v=vid1",
+                              variant="Best cricket bat review", relevance_hint=0.9)
+                for i in range(7)]
+    result = AdapterResult("youtube", AdapterStatus.SUCCESS, items=yt_items)
+    result.aggregate_items = [{"external_id": "vid1",
+                               "name": "Best cricket bat review",
+                               "url": "https://www.youtube.com/watch?v=vid1",
+                               "seller": "CricketGear PK",
+                               "sold_count_text": "12,345 views",
+                               "review_count": 7}]
+    process_adapter_result(db, "nomin", result, {"bat", "cricket"})
 
-    report = aggregation.analyze(db, "min50test")
+    report = aggregation.analyze(db, "nomin")
 
-    # verdict must be based ONLY on the qualifying platform (youtube, 60 >= 50)
-    basis = report["verdict"]["basis"]
-    assert basis["min_comments_required"] == 50
-    assert basis["platforms_included"] == ["youtube"]
-    assert set(basis["platforms_excluded"]) == {"reddit", "daraz"}
-    assert report["totals"]["analyzed_for_verdict"] == report["totals"]["analyzed"] - 3 \
-        or basis["analyzed_comments_for_verdict"] == 60
-    assert report["totals"]["platforms_meeting_minimum"] == 1
+    verdict = report["verdict"]
+    assert verdict["label"] != "Insufficient Data"
+    assert verdict["basis"]["platforms_included"] == ["youtube"]
+    assert verdict["basis"]["platforms_excluded"] == []
+    assert verdict["basis"]["analyzed_comments_for_verdict"] == 7
+    assert report["totals"]["analyzed_for_verdict"] == 7
+    assert "min_comments_required" not in report["totals"]
+    assert "below_minimum_platforms" not in report
 
-    # below-minimum entries + exact user-facing message
-    bm = {b["platform"]: b for b in report["below_minimum_platforms"]}
-    assert bm["reddit"]["analyzed_comments"] == 3
-    assert bm["daraz"]["analyzed_comments"] == 0
-    assert "below the 50-comment minimum" in bm["reddit"]["message"]
-    assert "cannot be processed" in bm["daraz"]["message"]
+    comp = report["comparison"][0]
+    assert comp["platform"] == "youtube"
+    assert comp["analysis_processed"] is True
+    assert comp["positive_pct"] is not None
 
-    # comparison: reddit has no percentages; youtube does.
-    # daraz (zero collected comments) has no comparison row at all - it is
-    # reported via below_minimum_platforms + platform_statuses instead.
-    comp = {c["platform"]: c for c in report["comparison"]}
-    assert "daraz" not in comp
-    assert comp["youtube"]["analysis_processed"] is True
-    assert comp["youtube"]["positive_pct"] is not None
-    assert comp["reddit"]["analysis_processed"] is False
-    assert comp["reddit"]["positive_pct"] is None
+    # source videos: metadata + per-video analyzed counts + working link
+    vids = report["source_videos"]
+    assert len(vids) == 1
+    v = vids[0]
+    assert v["url"] == "https://www.youtube.com/watch?v=vid1"
+    assert v["title"] == "Best cricket bat review"
+    assert v["channel"] == "CricketGear PK"
+    assert v["comments_analyzed"] == 7
+    assert v["comments_collected"] == 7
 
-    # status rows were annotated with the explanation
-    reddit_status = db.query(JobPlatformStatus).filter_by(
-        job_id="min50test", platform_key="reddit").one()
-    assert "50-comment minimum" in reddit_status.message
+
+def test_youtube_collect_carries_video_metadata():
+    """Every comment carries the source video URL + title; the result carries
+    per-video metadata for the Source videos card."""
+    from app.integrations.live_sources import YouTubeInnertubeClient, collect_youtube
+
+    page1 = _yt_comments_payload(
+        [{"id": "c1", "text": "Great ping on this bat.", "author": "A",
+          "when": "2 months ago", "likes": "12"}])
+
+    client = YouTubeInnertubeClient()
+
+    def fake_post(self, url, payload):
+        if "/search?" in url:
+            return _yt_search_payload()
+        if "videoId" in payload:
+            return _yt_next_payload()
+        return page1
+
+    with patch.object(ls.settings, "YOUTUBE_MAX_VIDEOS", 3), \
+            patch.object(ls.settings, "YOUTUBE_COMMENTS_PER_VIDEO", 10), \
+            patch.object(ls.settings, "INNERTUBE_MIN_INTERVAL_SECONDS", 0.0), \
+            patch.object(YouTubeInnertubeClient, "_post", fake_post):
+        res = collect_youtube("cricket bat", None, 50)
+
+    assert res.status == AdapterStatus.SUCCESS
+    assert res.items
+    item = res.items[0]
+    assert item.source_url == "https://www.youtube.com/watch?v=vid1"
+    assert item.variant == "Best cricket bat review 2026"
+    assert res.aggregate_items, "video metadata missing"
+    meta = res.aggregate_items[0]
+    assert meta["external_id"] == "vid1"
+    assert meta["name"] == "Best cricket bat review 2026"
+    assert meta["url"] == "https://www.youtube.com/watch?v=vid1"
+    assert meta["seller"] == "CricketGear PK"
+    assert meta["sold_count_text"] == "12,345 views"
+    assert meta["review_count"] == len(res.items)

@@ -92,3 +92,24 @@ Stage Summary:
 - Gateway verified reachable from deployment -> credentials are the ONLY missing piece; message in UI tells the user exactly that + how to register
 - Review APIs are seller-scoped by Daraz's design (authorized seller's own listings); system states this honestly instead of pretending otherwise
 - 74 tests green; backend restarted via py-health spawn (pid 12153)
+
+---
+Task ID: 5
+Agent: main (Z.ai)
+Task: YouTube-only product scope + remove 50-comment minimum + show source video links (user: "remove all the platform except youtube... set Youtube Only and remove the restriction of min 50 comments also show the youtube videos links as well")
+
+Work Log:
+- registry.py rebuilt YouTube-only: ADAPTERS = {youtube}. Other adapters stay in codebase (unregistered) for future scope changes. create_job clamps requested platform lists automatically; verified live (passed ["daraz","youtube"] -> youtube only)
+- aggregation.py rewritten: removed MIN_COMMENTS gating, below_minimum logic + below_minimum_message helper; every analyzed comment now feeds verdict/aspects/languages/trends/comparison; verdict.basis simplified (platforms_included/excluded, no min fields); added source_videos section (PlatformListing rows for youtube + per-video analyzed counts via source_url grouping + fallback rows for link-only comments); marketplace_listings excludes youtube
+- YouTube collectors now carry per-comment source metadata: collect_youtube (InnerTube) sets variant=video title + result.aggregate_items = per-video metadata (video_id, title, url, channel, views_text, comments_collected) persisted via pipeline's standard platform-entities path; YouTubeAdapter._search_official (Data API v3) same treatment
+- config: removed MIN_COMMENTS_FOR_ANALYSIS (+ scope comment); .env.example updated; chat route context now includes SOURCE VIDEOS + per-comment video links + YouTube-only reminders
+- exporter.py PDF: added "Source Videos (where the comments came from)" table (title/channel/comments/link), reworded Platform Comparison -> Source Comparison, Collection Status
+- Frontend: types (SourceVideo, removed BelowMinimumPlatform/min fields, source_videos + totals.source_videos); overview tab: removed 50-min banners + platforms-meeting-minimum stat, added Source videos card (8 clickable video links w/ channel + comments analyzed + views + watch source) + Source videos stat card; comment preview shows video title + "video" link; comparison tab rebuilt as Source-by-source comparison (no below-min badges/dash rows); explorer: removed belowMinimum prop/banners, platform filter -> YouTube only, expanded row shows "video: <title>" + "open video" link; home view: picker replaced by "Comments source: YouTube · live" badge, hero/features rewritten YouTube-first; dashboard header text no longer mentions minimum
+- Tests: updated test_platforms_listing (youtube-only), test_full_search_flow (1 platform, no minimum), test_platform_listing_metadata, replaced min-50 test with test_no_minimum_and_source_videos (7 comments -> verdict computed + source_videos assertions) + test_youtube_collect_carries_video_metadata; exporter untouched paths covered; 75 passed
+- E2E LIVE (job 85ec020f-ed5f-4003-a9b2-a1a678bddf32, "cricket bat"): 120 real comments across 8 videos -> 117 analyzed (3 spam) -> verdict Mostly Positive with Some Concerns 71.3 from ALL comments (no minimum); source videos listed w/ real titles+channels+views+links (Usman Khawaja "How to Choose a Bat" 39 analyzed, CoachCricXI 39, Gray-Nicolls 2026, ...); browser-verified: source-videos card links, no below-minimum banners anywhere, explorer row "video: TOP 10 CRICKET BATS | 2025-2026" + "open video" link; screenshot download/cricket-bat-youtube-only.png
+
+Stage Summary:
+- Product is YouTube-only: /api/platforms returns exactly youtube; platform lists in requests are clamped
+- 50-comment minimum fully removed: every analyzed comment counts; Insufficient Data only when < MIN_ANALYZED_FOR_VERDICT (5)
+- Full source traceability: every comment -> source video URL + title (preview card, explorer row, PDF table, chat context) + dedicated Source videos card
+- 75 tests green; backend restarted via py-health (pid 13838)

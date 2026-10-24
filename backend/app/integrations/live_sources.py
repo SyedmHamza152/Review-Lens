@@ -693,21 +693,31 @@ def collect_youtube(product_name: str, description: str | None,
     items: list[ReviewItem] = []
     seen_ids: set[str] = set()
     per_video = settings.YOUTUBE_COMMENTS_PER_VIDEO
+    video_meta: dict[str, dict] = {}
     for v in videos:
         if len(items) >= max_items:
             break
         comments, _ = client.fetch_comments(v["video_id"],
                                             min(per_video, max_items - len(items)), seen_ids)
+        url = f"https://www.youtube.com/watch?v={v['video_id']}"
+        video_meta[v["video_id"]] = {
+            "external_id": v["video_id"],
+            "name": v.get("title") or f"YouTube video {v['video_id']}",
+            "url": url,
+            "seller": v.get("channel"),          # channel name
+            "sold_count_text": v.get("views_text"),   # views, as shown on YouTube
+            "review_count": len(comments),       # comments collected from this video
+        }
         for c in comments:
             if len(items) >= max_items:
                 break
-            url = f"https://www.youtube.com/watch?v={v['video_id']}"
             items.append(ReviewItem(
                 external_id=c["id"],
                 text=c["text"][:1500],
                 review_date=c.get("date"),
                 author=c.get("author"),
                 source_url=url,
+                variant=(v.get("title") or None),  # source video title, shown per comment
                 # Comments were harvested from videos retrieved by a
                 # product-scoped search ("{product} review"), so the product
                 # context comes from the video level - the same rationale as
@@ -719,6 +729,13 @@ def collect_youtube(product_name: str, description: str | None,
             ))
 
     status = AdapterStatus.SUCCESS if items else AdapterStatus.NO_RESULTS
-    msg = (f"Collected {len(items)} real YouTube comments across {len(videos)} "
-           f"review video(s) for '{query}' via the public YouTube web API.")
-    return AdapterResult("youtube", status, msg, items=items[:max_items], data_source="live")
+    msg = (f"Collected {len(items)} real YouTube comments across {len(video_meta)} "
+           f"review video(s) for '{query}' via the public YouTube web API. "
+           "Each comment links to the video it came from; the dashboard lists "
+           "all source videos.")
+    result = AdapterResult("youtube", status, msg, items=items[:max_items],
+                           data_source="live")
+    # Persist source-video metadata through the standard platform-entities
+    # table so the report can show where every comment came from.
+    result.aggregate_items = list(video_meta.values())
+    return result

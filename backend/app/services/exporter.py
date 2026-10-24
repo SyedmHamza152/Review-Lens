@@ -84,7 +84,7 @@ def export_pdf(db: Session, job_id: str, report: dict) -> tuple[str, bytes]:
     story.append(Paragraph("Overall Verdict", h2))
     story.append(Paragraph(
         f"<b>{v['label']}</b> - overall sentiment score {v['score']}/100 from "
-        f"{t['analyzed']} analyzed comments across {t['platforms_with_data']} platform(s). "
+        f"{t['analyzed']} analyzed YouTube comments. "
         f"Positive {v['positive_pct']}%, negative {v['negative_pct']}%, "
         f"neutral {v['neutral_pct']}%, mixed {v['mixed_pct']}%. {v['methodology_note']}",
         body))
@@ -92,8 +92,29 @@ def export_pdf(db: Session, job_id: str, report: dict) -> tuple[str, bytes]:
     story.append(Paragraph("AI Summary", h2))
     story.append(Paragraph(report["summary"], body))
 
-    story.append(Paragraph("Platform Comparison", h2))
-    comp_rows = [["Platform", "N", "Pos%", "Neg%", "Neu%", "Mix%", "Avg rating", "Data"]]
+    if report.get("source_videos"):
+        story.append(Paragraph("Source Videos (where the comments came from)", h2))
+        vid_rows = [["Video", "Channel", "Comments analyzed", "Link"]]
+        for sv in report["source_videos"][:12]:
+            vid_rows.append([
+                (sv.get("title") or sv.get("video_id", ""))[:90],
+                sv.get("channel") or "-",
+                str(sv.get("comments_analyzed", 0)),
+                sv.get("url") or "-",
+            ])
+        vt = Table(vid_rows, hAlign="LEFT", colWidths=[80 * mm, 30 * mm, 22 * mm, 42 * mm])
+        vt.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f766e")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0fdfa")]),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        story.append(vt)
+
+    story.append(Paragraph("Source Comparison", h2))
+    comp_rows = [["Source", "N", "Pos%", "Neg%", "Neu%", "Mix%", "Avg rating", "Data"]]
     for c in report["comparison"]:
         comp_rows.append([
             c["platform_name"], str(c["total"]), f"{c['positive_pct']}",
@@ -111,7 +132,7 @@ def export_pdf(db: Session, job_id: str, report: dict) -> tuple[str, bytes]:
     ]))
     story.append(tbl)
     story.append(Paragraph(
-        "Note: percentages reflect the collected sample only; low-sample platforms "
+        "Note: percentages reflect the collected sample only; low-sample sources "
         "(marked in the dashboard) are not meaningful for ranking.", body))
 
     story.append(Paragraph("Most Discussed Aspects", h2))
@@ -139,8 +160,8 @@ def export_pdf(db: Session, job_id: str, report: dict) -> tuple[str, bytes]:
         story.append(Paragraph(
             "<br/>".join(f"- {c['phrase']} ({c['count']}x)" for c in report["complaints"]), body))
 
-    story.append(Paragraph("Platform Coverage & Integration Status", h2))
-    cov_rows = [["Platform", "Status", "Items", "Message"]]
+    story.append(Paragraph("Collection Status", h2))
+    cov_rows = [["Source", "Status", "Items", "Message"]]
     for s in report["platform_statuses"]:
         cov_rows.append([s["platform_name"], s["status"], str(s["items_collected"]),
                          Paragraph((s["message"] or "")[:200], ParagraphStyle("m", parent=body, fontSize=7.5, leading=9.5))])

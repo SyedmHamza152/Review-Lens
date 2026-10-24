@@ -58,12 +58,9 @@ class Settings(BaseSettings):
 
     DARAZ_CATALOG_MAX_ITEMS: int = 40
 
-    # --- 50-comment minimum (product requirement) ---
-    # A platform with fewer than this many REAL comments cannot support
-    # reliable sentiment analysis; the report states that explicitly instead
-    # of pretending. Platforms below the minimum are shown in the Comments
-    # tab but excluded from verdict/aspects/comparison aggregation.
-    MIN_COMMENTS_FOR_ANALYSIS: int = 50
+    # --- Platform scope (product decision 2026-10) ---
+    # YouTube is the only platform; the former 50-comment per-platform
+    # minimum was removed - every analyzed comment counts toward the verdict.
 
     # --- YouTube live collection (public web API; official v3 when key set) ---
     YOUTUBE_MAX_VIDEOS: int = 10

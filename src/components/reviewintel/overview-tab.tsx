@@ -12,14 +12,12 @@ import {
   AspectChart, LanguagePie, PlatformStackedBar, SentimentByLanguageBar,
   SentimentDonut, TrendLine, VolumeBar,
 } from "./charts";
-import { AlertTriangle, CheckCircle2, ExternalLink, Gauge, Info, Languages, MessageSquare, ShieldCheck, Store, ThumbsDown, ThumbsUp, TrendingUp } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Gauge, Info, Languages, MessageSquare, ShieldCheck, ThumbsDown, ThumbsUp, TrendingUp, Youtube } from "lucide-react";
 
 export function OverviewTab({ report, jobId }: { report: Report; jobId: string }) {
   const { verdict, totals, distribution, aspects, advantages, complaints } = report;
   const isSample = report.job.data_mode === "sample";
-  const listings = report.marketplace_listings ?? [];
-  const belowMin = report.below_minimum_platforms ?? [];
-  const minReq = totals.min_comments_required ?? 50;
+  const videos = report.source_videos ?? [];
 
   // real collected comments preview (transparency: comments visible up front)
   const { data: preview } = useQuery({
@@ -52,21 +50,6 @@ export function OverviewTab({ report, jobId }: { report: Report; jobId: string }
         </div>
       )}
 
-      {/* 50-comment minimum notices — exact, honest per-platform status */}
-      {belowMin.length > 0 ? (
-        <div className="space-y-2">
-          {belowMin.map((b) => (
-            <div key={b.platform}
-              className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
-              <p>
-                <b>{b.platform_name}:</b> {b.message}
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
       {/* Summary cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -89,55 +72,42 @@ export function OverviewTab({ report, jobId }: { report: Report; jobId: string }
           tone="pos"
         />
         <StatCard
-          icon={<ShieldCheck className="size-4" />}
-          label="Platforms analyzed"
-          value={`${totals.platforms_meeting_minimum ?? "–"}`}
-          sub={`met the ${minReq}-comment minimum · of ${totals.platforms_requested} requested`}
+          icon={<Youtube className="size-4" />}
+          label="Source videos"
+          value={`${videos.length}`}
+          sub={`YouTube review videos · every comment links to its video`}
         />
       </div>
 
-      {/* Marketplace rating snapshots (real storefront aggregates) */}
-      {listings.length > 0 ? (
+      {/* Source videos — where the comments came from */}
+      {videos.length > 0 ? (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
-              <Store className="size-4 text-primary" /> Marketplace rating snapshots
+              <Youtube className="size-4 text-primary" /> Source videos
             </CardTitle>
             <p className="text-xs font-normal text-muted-foreground">
-              Real product listings with the marketplace's own average rating and review
-              counts, collected live from the storefront. These are platform-side counters —
-              NOT our sentiment analysis and NOT part of the verdict score.
+              The YouTube review videos the comments were collected from. Titles link
+              straight to the video on YouTube.
             </p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {listings.map((g) => (
-              <div key={g.platform} className="space-y-2">
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <Badge variant="outline" className="border-emerald-500/40 text-emerald-700">
-                    {g.platform_name} · {g.listing_count} listings
-                  </Badge>
-                  {g.avg_rating !== null ? (
-                    <span className="text-xs text-muted-foreground">
-                      avg rating {g.avg_rating}/5 · {g.total_review_count.toLocaleString()} total ratings
-                    </span>
-                  ) : null}
-                </div>
-                <div className="grid gap-2 md:grid-cols-2">
-                  {g.items.map((it, i) => (
-                    <a key={i} href={it.url ?? "#"} target="_blank" rel="noreferrer"
-                      className="rounded-md border px-3 py-2 text-xs transition-colors hover:bg-muted/50">
-                      <p className="line-clamp-1 font-medium">{it.name}</p>
-                      <p className="mt-0.5 text-muted-foreground">
-                        {it.rating !== null ? `★ ${it.rating.toFixed(1)}` : "unrated"}
-                        {" · "}{it.review_count.toLocaleString()} ratings
-                        {it.price_text ? ` · ${it.price_text}` : ""}
-                        {it.sold_count_text ? ` · ${it.sold_count_text}` : ""}
-                      </p>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            ))}
+          <CardContent>
+            <div className="grid gap-2 md:grid-cols-2">
+              {videos.map((v) => (
+                <a key={v.video_id} href={v.url} target="_blank" rel="noreferrer"
+                  className="rounded-md border px-3 py-2 text-xs transition-colors hover:bg-muted/50">
+                  <p className="line-clamp-1 font-medium">{v.title}</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    {v.channel ? `${v.channel} · ` : ""}
+                    {v.comments_analyzed} comment{v.comments_analyzed === 1 ? "" : "s"} analyzed
+                    {v.views_text ? ` · ${v.views_text}` : ""}
+                  </p>
+                  <p className="mt-1 inline-flex items-center gap-0.5 text-primary">
+                    watch source <ExternalLink className="size-2.5" />
+                  </p>
+                </a>
+              ))}
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -160,8 +130,8 @@ export function OverviewTab({ report, jobId }: { report: Report; jobId: string }
             </div>
           ) : preview.total === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No comments matched this product on the selected platforms — see the
-              per-platform notices above for the exact counts and reasons.
+              No comments matched this product on YouTube — try a more common
+              product name or a slightly broader spelling.
             </p>
           ) : (
             <div className="grid gap-2 md:grid-cols-2">
@@ -179,10 +149,11 @@ export function OverviewTab({ report, jobId }: { report: Report; jobId: string }
                       : "border-slate-400/40 text-slate-600"}`}>
                       {r.sentiment}
                     </span>
+                    {r.variant ? <span className="line-clamp-1 max-w-48">{r.variant}</span> : null}
                     {r.source_url ? (
                       <a href={r.source_url} target="_blank" rel="noreferrer"
                         className="inline-flex items-center gap-0.5 text-primary hover:underline">
-                        source <ExternalLink className="size-2.5" />
+                        video <ExternalLink className="size-2.5" />
                       </a>
                     ) : null}
                   </div>
@@ -331,15 +302,14 @@ export function OverviewTab({ report, jobId }: { report: Report; jobId: string }
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Platform sentiment comparison</CardTitle>
+            <CardTitle className="text-base">Sentiment comparison</CardTitle>
             <p className="text-xs font-normal text-muted-foreground">
-              Sample sizes shown alongside - low-sample platforms are flagged in the comparison tab
+              Positive / negative / neutral / mixed shares of the analyzed sample
             </p>
           </CardHeader>
           <CardContent>
             <PlatformStackedBar
               rows={report.comparison
-                .filter((c) => c.analysis_processed)
                 .map((c) => ({
                   platform_name: c.platform_name,
                   positive_pct: c.positive_pct ?? 0,
@@ -349,12 +319,6 @@ export function OverviewTab({ report, jobId }: { report: Report; jobId: string }
                 }))}
               height={300}
             />
-            {report.comparison.some((c) => !c.analysis_processed) ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Platforms below the {minReq}-comment minimum are excluded from this chart
-                (see notices above).
-              </p>
-            ) : null}
           </CardContent>
         </Card>
 

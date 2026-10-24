@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { exportUrl, pyFetch } from "@/lib/pyapi";
-import type { BelowMinimumPlatform, JobStatus, Report } from "@/lib/types";
+import type { JobStatus, Report } from "@/lib/types";
 import { AssistantTab } from "./assistant-tab";
 import { ComparisonTab } from "./comparison-tab";
 import { ExplorerTab } from "./explorer-tab";
@@ -96,8 +96,7 @@ export function DashboardView({ jobId }: { jobId: string }) {
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {report.totals.analyzed} comments analyzed · {report.totals.analyzed_for_verdict ?? report.totals.analyzed} counted
-            toward the verdict (platforms meeting the {report.totals.min_comments_required ?? 50}-comment minimum) ·
-            searched {new Date(report.job.created_at).toLocaleString()}
+            toward the verdict · searched {new Date(report.job.created_at).toLocaleString()}
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -134,7 +133,7 @@ export function DashboardView({ jobId }: { jobId: string }) {
           <ComparisonTab report={report} />
         </TabsContent>
         <TabsContent value="explorer" className="mt-4">
-          <ExplorerTab jobId={jobId} belowMinimum={report.below_minimum_platforms} />
+          <ExplorerTab jobId={jobId} />
         </TabsContent>
         <TabsContent value="assistant" className="mt-4">
           <AssistantTab jobId={jobId} report={report} />
@@ -148,13 +147,12 @@ export function DashboardView({ jobId }: { jobId: string }) {
       {job?.platforms.some((p) => ["needs_credentials", "blocked", "unsupported"].includes(p.status)) ? (
         <Card className="border-muted">
           <CardContent className="p-3 text-xs leading-relaxed text-muted-foreground">
-            <b className="text-foreground/80">Integration status:</b>{" "}
+            <b className="text-foreground/80">YouTube status:</b>{" "}
             {job.platforms
               .filter((p) => ["needs_credentials", "blocked", "unsupported"].includes(p.status))
               .map((p) => `${p.platform_name} (${p.status.replace("_", " ")})`)
               .join(" · ")}
-            . Configure API credentials in backend/.env to enable live collection for
-            those platforms - see the Methodology tab.
+            . YouTube collection could not be reached for this search - see the Methodology tab.
           </CardContent>
         </Card>
       ) : null}

@@ -22,8 +22,15 @@ function buildContext(report: any, reviews: any[]): string {
   lines.push(
     `VERDICT: ${v.label} | score ${v.score}/100 | positive ${v.positive_pct}% | negative ${v.negative_pct}% | neutral ${v.neutral_pct}% | mixed ${v.mixed_pct}% | analyzed ${t.analyzed} comments`,
   );
-  lines.push(`PLATFORM COVERAGE: ${t.platforms_with_data}/${t.platforms_requested} platforms with data; ${t.spam_filtered} spam filtered`);
+  lines.push(`PLATFORM COVERAGE: ${t.platforms_with_data}/${t.platforms_requested} platform(s) with data (YouTube is the only platform); ${t.spam_filtered} spam filtered`);
   lines.push(`LANGUAGES: ${report.languages.map((l: any) => `${l.language} ${l.count}`).join(", ")}`);
+
+  if (report.source_videos?.length) {
+    lines.push("SOURCE VIDEOS (the YouTube videos the comments were collected from):");
+    for (const s of report.source_videos.slice(0, 12)) {
+      lines.push(`- ${s.title} | ${s.channel ?? "unknown channel"} | comments analyzed: ${s.comments_analyzed} | ${s.url}`);
+    }
+  }
 
   if (report.comparison?.length) {
     lines.push("PLATFORM COMPARISON (name: n, pos%, neg%, mix%, avg_rating, top_complaint):");
@@ -52,16 +59,16 @@ function buildContext(report: any, reviews: any[]): string {
     lines.push(`TOP COMPLAINTS: ${report.complaints.map((c: any) => `${c.phrase} (${c.count}x)`).join("; ")}`);
   }
   if (reviews.length) {
-    lines.push("REPRESENTATIVE COMMENTS (verbatim, with platform | language | sentiment | rating):");
+    lines.push("REPRESENTATIVE COMMENTS (verbatim, with platform | language | sentiment | rating | source video):");
     for (const r of reviews) {
-      lines.push(`- [${r.platform} | ${r.language} | ${r.sentiment} | rating=${r.rating ?? "n/a"}] "${r.text_original.slice(0, 220)}"`);
+      lines.push(`- [${r.platform} | ${r.language} | ${r.sentiment} | rating=${r.rating ?? "n/a"} | video=${r.source_url ?? "n/a"}] "${r.text_original.slice(0, 220)}"`);
     }
   }
   lines.push(
-    "REMINDERS: all reviews/comments are LIVE data collected from platform APIs; " +
+    "REMINDERS: all comments are LIVE data collected from real YouTube review videos; " +
     "sentiment percentages describe the collected sample only, not the market; " +
-    "sample-size caveats apply (low_sample=true platforms are unreliable for ranking); " +
-    "marketplace rating snapshots are the platforms' own counters, not sentiment scores.",
+    "sample-size caveats apply (low_sample=true sources are unreliable for ranking); " +
+    "every comment can be traced to its source video link.",
   );
   return lines.join("\n");
 }
@@ -92,7 +99,7 @@ export async function POST(req: Request) {
     if (!report.totals || report.totals.analyzed < 3) {
       return NextResponse.json({
         answer:
-          "There is not enough analyzed data to answer reliably. This search collected fewer than 3 usable comments. Try enabling more platforms or provide API credentials, then run the search again.",
+          "There is not enough analyzed data to answer reliably. This search collected fewer than 3 usable YouTube comments. Try a more common product name or a slightly broader spelling, then run the search again.",
         insufficient: true,
       });
     }

@@ -7,13 +7,17 @@ Scoring methodology (documented openly in the report + methodology tab):
 - Verdict thresholds operate on confidence-weighted sentiment shares and
   require a minimum sample (default 5). Sentiment share is NOT presented as
   a customer rating or a verified quality measure anywhere in the product.
+
+Product decision (2026-10, user directive): YouTube is the only platform and
+the former 50-comment-per-platform minimum has been REMOVED - every analyzed
+comment feeds the verdict, whatever the sample size. Sample-size honesty is
+kept via the low-sample flags and the stated totals.
 """
 from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -22,17 +26,6 @@ from app.nlp.aspect_data import ASPECT_PHRASE_NEG, ASPECT_PHRASE_POS, ASPECTS
 
 MIN_VERDICT = settings.MIN_ANALYZED_FOR_VERDICT
 LOW_SAMPLE = settings.LOW_SAMPLE_PLATFORM_THRESHOLD
-MIN_COMMENTS = settings.MIN_COMMENTS_FOR_ANALYSIS  # 50-comment minimum
-
-
-def below_minimum_message(platform_name: str, count: int) -> str:
-    """The exact user-facing explanation required by the product spec."""
-    return (
-        f"Only {count} real comment{'s' if count != 1 else ''} found on "
-        f"{platform_name} - below the {MIN_COMMENTS}-comment minimum, so "
-        "sentiment analysis cannot be processed for this platform. "
-        "The comments collected are still shown in the Comments tab."
-    )
 
 
 def _pct(part: int, whole: int) -> float:
@@ -53,57 +46,23 @@ def analyze(db: Session, job_id: str) -> dict:
     reviews = [r for r in reviews_all if not r.is_spam and r.relevance >= settings.RELEVANCE_THRESHOLD]
     analyzed = [r for r in reviews if r.sentiment in ("positive", "negative", "neutral", "mixed")]
 
-    # ---- 50-comment minimum policy (product requirement) ----
-    # A platform needs >= MIN_COMMENTS real analyzed comments for its sentiment
-    # results to be processed into the verdict. Platforms below the minimum are
-    # reported with the exact explanation - never padded, never simulated.
     statuses = db.query(JobPlatformStatus).filter_by(job_id=job_id).all()
     status_map = {s.platform_key: s for s in statuses}
-    per_platform_counts = Counter(r.platform for r in analyzed)
-    qualifying = {p for p, n in per_platform_counts.items() if n >= MIN_COMMENTS}
-    below_minimum: list[dict] = []
-    for plat, n in per_platform_counts.most_common():
-        if n < MIN_COMMENTS:
-            st = status_map.get(plat)
-            name = st.platform_name if st else plat.title()
-            below_minimum.append({
-                "platform": plat, "platform_name": name, "analyzed_comments": n,
-                "message": below_minimum_message(name, n),
-            })
-    # platforms that succeeded but yielded zero usable comments (e.g. Daraz
-    # catalog aggregates only) also carry the explicit explanation
-    for s in statuses:
-        if s.platform_key not in per_platform_counts and \
-                s.status in ("success", "success_sample", "no_results"):
-            below_minimum.append({
-                "platform": s.platform_key, "platform_name": s.platform_name,
-                "analyzed_comments": 0, "message": below_minimum_message(s.platform_name, 0),
-            })
-    analyzed_q = [r for r in analyzed if r.platform in qualifying]
 
-    # persist the explanation on the platform status rows (progress + report UI)
-    for entry in below_minimum:
-        st = status_map.get(entry["platform"])
-        if st and st.status in ("success", "success_sample", "no_results") \
-                and below_minimum_message(st.platform_name, entry["analyzed_comments"]) not in st.message:
-            st.message = (st.message + " | " + entry["message"])[:800]
-    if below_minimum:
-        db.commit()
+    counts = Counter(r.sentiment for r in analyzed)
+    total = len(analyzed)
 
-    counts = Counter(r.sentiment for r in analyzed_q)
-    total = len(analyzed_q)
-
-    weighted = sum(r.sentiment_score * r.sentiment_confidence for r in analyzed_q)
-    weight_sum = sum(max(r.sentiment_confidence, 0.15) for r in analyzed_q)
+    weighted = sum(r.sentiment_score * r.sentiment_confidence for r in analyzed)
+    weight_sum = sum(max(r.sentiment_confidence, 0.15) for r in analyzed)
     avg_score = weighted / weight_sum if weight_sum else 0.0
     overall_score = round(max(0.0, min(100.0, 50 + 50 * avg_score)), 1)
-    avg_conf = round(sum(r.sentiment_confidence for r in analyzed_q) / total, 3) if total else 0.0
+    avg_conf = round(sum(r.sentiment_confidence for r in analyzed) / total, 3) if total else 0.0
 
     verdict_label = _verdict_label(counts, total)
 
-    # ---- aspects (only platforms meeting the 50-comment minimum) ----
+    # ---- aspects (all analyzed comments) ----
     aspect_stats: dict[str, dict] = {}
-    for r in analyzed_q:
+    for r in analyzed:
         try:
             mentions = json.loads(r.aspects_json or "[]")
         except json.JSONDecodeError:
@@ -143,7 +102,7 @@ def analyze(db: Session, job_id: str) -> dict:
     complaints = [{"phrase": p, "count": c, "detail": d} for (p, c, d) in
                   sorted(cmp_l, key=lambda x: -x[1])[:6]]
 
-    # ---- platform comparison (all platforms shown; verdict only from qualifying) ----
+    # ---- platform comparison (all analyzed comments count toward the verdict) ----
     by_platform: dict[str, list[Review]] = defaultdict(list)
     for r in analyzed:
         by_platform[r.platform].append(r)
@@ -168,44 +127,37 @@ def analyze(db: Session, job_id: str) -> dict:
             except json.JSONDecodeError:
                 pass
         st = status_map.get(plat)
-        meets_min = plat in qualifying
         entry = {
             "platform": plat,
             "platform_name": (st.platform_name if st else plat.title()),
             "total": n,
-            "meets_minimum": meets_min,
-            "analysis_processed": meets_min,
-            "below_minimum_message": None if meets_min else below_minimum_message(
-                (st.platform_name if st else plat.title()), n),
-            "positive_pct": _pct(c["positive"], n) if meets_min else None,
-            "negative_pct": _pct(c["negative"], n) if meets_min else None,
-            "neutral_pct": _pct(c["neutral"], n) if meets_min else None,
-            "mixed_pct": _pct(c["mixed"], n) if meets_min else None,
+            "meets_minimum": True,
+            "analysis_processed": True,
+            "below_minimum_message": None,
+            "positive_pct": _pct(c["positive"], n),
+            "negative_pct": _pct(c["negative"], n),
+            "neutral_pct": _pct(c["neutral"], n),
+            "mixed_pct": _pct(c["mixed"], n),
             "avg_rating": round(sum(ratings) / len(ratings), 2) if ratings else None,
             "low_sample": n < LOW_SAMPLE,
             "is_sample": bool(st.is_sample if st else True),
             "rank_by_positive": None,
-            "top_positive_aspect": (pos_asp.most_common(1)[0][0] if pos_asp else None)
-                                   if meets_min else None,
-            "top_complaint_aspect": (neg_asp.most_common(1)[0][0] if neg_asp else None)
-                                    if meets_min else None,
-            "top_drivers": [d for d, _ in drivers_counter.most_common(5)] if meets_min else [],
+            "top_positive_aspect": (pos_asp.most_common(1)[0][0] if pos_asp else None),
+            "top_complaint_aspect": (neg_asp.most_common(1)[0][0] if neg_asp else None),
+            "top_drivers": [d for d, _ in drivers_counter.most_common(5)],
             "status": st.status if st else "success",
             "message": st.message if st else "",
             "collected_at": st.collected_at if st else None,
         }
         comparison.append(entry)
-    # rank by positive pct only among qualifying platforms
-    rankable = sorted([c for c in comparison if c["analysis_processed"]],
-                      key=lambda c: (-c["positive_pct"], -c["total"]))
+    rankable = sorted(comparison, key=lambda c: (-c["positive_pct"], -c["total"]))
     for i, c in enumerate(rankable, 1):
         c["rank_by_positive"] = i
-    comparison.sort(key=lambda c: (-(c["analysis_processed"] is not None and c["analysis_processed"]),
-                                   -c["total"]))
+    comparison.sort(key=lambda c: -c["total"])
 
-    # ---- languages (qualifying platforms only) ----
+    # ---- languages (all analyzed comments) ----
     lang_counts: dict[str, Counter] = defaultdict(Counter)
-    for r in analyzed_q:
+    for r in analyzed:
         lang_counts[r.language][r.sentiment] += 1
     languages = []
     for lang, c in sorted(lang_counts.items(), key=lambda x: -sum(x[1].values())):
@@ -214,9 +166,9 @@ def analyze(db: Session, job_id: str) -> dict:
                           "positive": c["positive"], "negative": c["negative"],
                           "neutral": c["neutral"], "mixed": c["mixed"]})
 
-    # ---- trends (weekly; qualifying platforms only) ----
+    # ---- trends (weekly; all analyzed comments) ----
     trend_groups: dict[str, list[float]] = defaultdict(list)
-    for r in analyzed_q:
+    for r in analyzed:
         if r.review_date is not None:
             d = r.review_date
             week = d.strftime("%G-W%V")
@@ -224,8 +176,37 @@ def analyze(db: Session, job_id: str) -> dict:
     trends = [{"period": w, "score": round(sum(v) / len(v), 3), "count": len(v)}
               for w, v in sorted(trend_groups.items())]
 
-    # ---- marketplace rating aggregates (real storefront listings) ----
-    listing_rows = db.query(PlatformListing).filter_by(job_id=job_id).all()
+    # ---- YouTube source videos (where the comments came from) ----
+    analyzed_by_url: dict[str, int] = Counter(
+        r.source_url for r in analyzed if r.source_url)
+    video_rows = (db.query(PlatformListing)
+                  .filter_by(job_id=job_id, platform="youtube").all())
+    source_videos = []
+    for v in sorted(video_rows, key=lambda x: -(x.review_count or 0)):
+        url = v.source_url or ""
+        source_videos.append({
+            "video_id": v.external_id,
+            "title": v.name,
+            "url": url,
+            "channel": v.seller,
+            "views_text": v.sold_count_text,
+            "comments_collected": v.review_count,
+            "comments_analyzed": analyzed_by_url.get(url, 0),
+        })
+    # comments whose video row is missing still map to a linkable source
+    known_urls = {v["url"] for v in source_videos}
+    for url, n in analyzed_by_url.most_common():
+        if url not in known_urls:
+            source_videos.append({
+                "video_id": url, "title": url, "url": url, "channel": None,
+                "views_text": None, "comments_collected": n, "comments_analyzed": n,
+            })
+
+    # ---- marketplace rating aggregates (non-YouTube platforms only; kept for
+    # backward compatibility of the report contract) ----
+    listing_rows = (db.query(PlatformListing)
+                    .filter_by(job_id=job_id)
+                    .filter(PlatformListing.platform != "youtube").all())
     listings_by_platform: dict[str, list[PlatformListing]] = defaultdict(list)
     for l in listing_rows:
         listings_by_platform[l.platform].append(l)
@@ -259,18 +240,16 @@ def analyze(db: Session, job_id: str) -> dict:
 
     # ---- totals ----
     spam_count = sum(1 for r in reviews_all if r.is_spam)
-    dup_saved = getattr(job, "dup_count", None)
     totals = {
         "collected": len(reviews_all),
         "analyzed": len(analyzed),
         "analyzed_for_verdict": total,
-        "min_comments_required": MIN_COMMENTS,
         "spam_filtered": spam_count,
         "low_relevance_excluded": len(reviews_all) - len(reviews) - spam_count,
         "platforms_with_data": len(by_platform),
-        "platforms_meeting_minimum": len(qualifying),
         "platforms_requested": len(statuses),
         "avg_confidence": avg_conf,
+        "source_videos": len(source_videos),
     }
 
     distribution = [
@@ -289,9 +268,8 @@ def analyze(db: Session, job_id: str) -> dict:
         "mixed_pct": _pct(counts["mixed"], total),
         "avg_confidence": avg_conf,
         "basis": {
-            "min_comments_required": MIN_COMMENTS,
-            "platforms_included": sorted(qualifying),
-            "platforms_excluded": [b["platform"] for b in below_minimum],
+            "platforms_included": sorted(by_platform),
+            "platforms_excluded": [],
             "analyzed_comments_total": len(analyzed),
             "analyzed_comments_for_verdict": total,
         },
@@ -300,16 +278,10 @@ def analyze(db: Session, job_id: str) -> dict:
             "(-1..1). Sentiment share reflects the collected sample only and is "
             "NOT a customer rating or a verified measure of product quality."
         ),
-        "minimum_note": (
-            f"Sentiment analysis is processed only for platforms with at least "
-            f"{MIN_COMMENTS} real comments; platforms below that minimum state so "
-            "explicitly instead of being analyzed."
-        ),
     }
 
     summary = build_summary(job.product_name, verdict, counts, total,
-                            aspects_out, comparison, languages, by_platform,
-                            below_minimum)
+                            aspects_out, comparison, languages, by_platform)
 
     return {
         "job": {
@@ -336,7 +308,7 @@ def analyze(db: Session, job_id: str) -> dict:
         "verdict": verdict,
         "distribution": distribution,
         "summary": summary,
-        "below_minimum_platforms": below_minimum,
+        "source_videos": source_videos,
         "aspects": aspects_out,
         "advantages": advantages,
         "complaints": complaints,
@@ -351,21 +323,14 @@ def analyze(db: Session, job_id: str) -> dict:
                            "non-negligible sentiment (e.g. praise + complaint)."),
             "min_sample_for_verdict": MIN_VERDICT,
             "low_sample_platform_threshold": LOW_SAMPLE,
-            "min_comments_for_analysis": MIN_COMMENTS,
-            "min_comments_rule": (
-                f"Platforms need at least {MIN_COMMENTS} real comments before "
-                "their sentiment results are processed; below that, the report "
-                "says so explicitly and shows only the raw comments."),
             "confidence": ("Every comment carries sentiment/language confidence; "
                            "low-confidence predictions are flagged uncertain."),
             "disclaimers": [
                 "Sentiment percentages describe the collected sample, not the market.",
-                "Platform comparison must consider sample size and audience differences.",
-                "All reviews/comments are collected live from platform APIs; when a "
-                "platform cannot be accessed, it is reported as such - never simulated.",
-                "Marketplace rating aggregates (e.g. Daraz) are the platform's own "
-                "counters, not our sentiment analysis.",
-                "A higher positive percentage does not make a platform 'better'.",
+                "Small samples are less reliable; low-sample flags communicate this.",
+                "All comments are collected live from YouTube; when YouTube cannot "
+                "be accessed, it is reported as such - never simulated.",
+                "A higher positive percentage does not make a source 'better'.",
             ],
         },
     }
@@ -394,31 +359,21 @@ def _verdict_label(counts: Counter, total: int) -> str:
 
 def build_summary(product_name: str, verdict: dict, counts: Counter, total: int,
                   aspects: list[dict], comparison: list[dict],
-                  languages: list[dict], by_platform: dict,
-                  below_minimum: list[dict] | None = None) -> str:
+                  languages: list[dict], by_platform: dict) -> str:
     """Deterministic, evidence-based summary (no fabricated claims)."""
-    below_minimum = below_minimum or []
     if total < MIN_VERDICT:
         parts = [f"Insufficient usable data was collected for {product_name} "
-                 f"({total} analyzed comment(s) from platforms meeting the "
-                 f"{MIN_COMMENTS}-comment minimum), so no reliable verdict can be made."]
-        if below_minimum:
-            detail = "; ".join(f"{b['platform_name']}: {b['analyzed_comments']} comment(s)"
-                               for b in below_minimum)
-            parts.append(f"Per-platform comment counts vs the {MIN_COMMENTS}-comment "
-                         f"minimum: {detail}. Sentiment analysis cannot be processed "
-                         "for platforms below the minimum.")
-        parts.append("Try a more common product name or configure platform API "
-                     "credentials to widen coverage. No data was invented.")
+                 f"({total} analyzed comment(s)), so no reliable verdict can be made."]
+        parts.append("Try a more common product name or a slightly broader "
+                     "spelling. No data was invented.")
         return " ".join(parts)
     top_aspects = [a for a in aspects if a["mentions"] >= 2][:3]
     main_pos = [a["label"] for a in top_aspects if a["positive"] > a["negative"]]
     main_neg = [a["label"] for a in top_aspects if a["negative"] > a["positive"]]
-    best_platform = next((c for c in comparison if c.get("analysis_processed")), None)
     parts = [
         f"{product_name} receives a {verdict['label'].lower()} verdict "
-        f"(score {verdict['score']}/100) from {total} analyzed comments across "
-        f"{len(by_platform)} platform(s): {verdict['positive_pct']}% positive, "
+        f"(score {verdict['score']}/100) from {total} analyzed YouTube comments "
+        f"across {len(by_platform)} platform(s): {verdict['positive_pct']}% positive, "
         f"{verdict['negative_pct']}% negative, {verdict['mixed_pct']}% mixed.",
     ]
     if main_pos:
@@ -429,18 +384,7 @@ def build_summary(product_name: str, verdict: dict, counts: Counter, total: int,
         parts.append(
             "A notable share of comments are mixed (praise + complaints in the same "
             "review), which means experiences vary notably across buyers.")
-    if best_platform:
-        parts.append(
-            f"Within this sample, {best_platform['platform_name']} shows the highest "
-            f"positive share ({best_platform['positive_pct']}% of {best_platform['total']} "
-            "comments); differences reflect sample size and audience, not platform quality.")
     lang_names = ", ".join(l["language"] for l in languages[:3])
     parts.append(f"Feedback languages detected: {lang_names} - opinions are consistent "
                  "with the per-language breakdown shown below.")
-    if below_minimum:
-        detail = "; ".join(f"{b['platform_name']}: only {b['analyzed_comments']} real "
-                           "comment(s)" for b in below_minimum)
-        parts.append(f"Platforms below the {MIN_COMMENTS}-comment minimum were NOT "
-                     f"analyzed ({detail}) - their raw comments remain viewable in "
-                     "the Comments tab.")
     return " ".join(parts)
