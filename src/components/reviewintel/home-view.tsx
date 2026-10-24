@@ -262,6 +262,12 @@ function PlatformChip({ p, selected, onToggle }: {
         <p className="font-medium">{p.name}</p>
         <p className="mt-1 text-muted-foreground">{p.access_mode}</p>
         <p className="mt-1">{p.notes}</p>
+        {p.optional_env && p.optional_env.length > 0 && (
+          <p className="mt-1.5 border-t border-border/60 pt-1.5">
+            <span className="text-amber-600 dark:text-amber-400">Unlocks more data with:</span>{" "}
+            <code className="text-[10px]">{p.optional_env.join(" · ")}</code>
+          </p>
+        )}
       </TooltipContent>
     </Tooltip>
   );

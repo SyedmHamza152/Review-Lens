@@ -42,6 +42,7 @@ Browser ──> Caddy gateway (:81, preview URL)
 | `app/services/exporter.py` | CSV + PDF report |
 | `app/nlp/` | language detection, Roman-Urdu normalization, sentiment engine, ABSA, gloss translation |
 | `app/integrations/live_sources.py` | live credential-free connectors: Reddit (public archive), Hacker News (Algolia), Daraz PK catalog |
+| `app/integrations/daraz_open_platform.py` | official Daraz Open Platform client (LAZOP HMAC-SHA256 signing, seller products + review APIs, 7-day window walk, batched review bodies) |
 | `app/integrations/` | 13 platform adapters (sample corpus kept for tests/eval only) |
 
 ### Database (SQLAlchemy 2.0)
@@ -105,7 +106,7 @@ Verified live from this deployment (2026-10):
 | YouTube | **LIVE comments**: public YouTube web client API (InnerTube — the same search + comments endpoints a browser session uses); official Data API v3 used automatically when `YOUTUBE_API_KEY` is set | `success` (live) |
 | Reddit | **LIVE**: public Arctic-Shift archive API (posts + comments, incl. Pakistani subreddits); official OAuth API used automatically when creds configured | `success` (live) |
 | Hacker News | **LIVE**: public HN Algolia search API (stories + comments) | `success` (live) |
-| Daraz | **LIVE rating aggregates**: public storefront catalog JSON (avg rating, review counts, prices, sellers). Written review TEXT: currently blocked for datacenter deployments by Alibaba anti-bot (mtop `RGV587` / `cloud_ip_bl`); an approved Open Platform app (`DARAZ_APP_KEY`/`DARAZ_APP_SECRET`) unlocks it | `success` (aggregates live); review text blocked/`needs_credentials` |
+| Daraz | **LIVE rating aggregates**: public storefront catalog JSON (avg rating, review counts, prices, sellers). **Written review TEXT: official Daraz Open Platform API** (`app/integrations/daraz_open_platform.py`) — LAZOP protocol, HMAC-SHA256-signed requests to `https://api.daraz.pk/rest` (`/products/get` → `/review/seller/history/list` → `/review/seller/list/v2`). Gateway **verified reachable** from this deployment (signed probe returns proper business errors). Activates automatically when `DARAZ_APP_KEY` + `DARAZ_APP_SECRET` + `DARAZ_ACCESS_TOKEN` are set; review APIs are seller-scoped (the authorized seller's own listings — Daraz offers no cross-seller public review API). Without creds: aggregates live + exact setup message | `success` (aggregates live); review text on Open Platform activation |
 | Amazon | PA-API 5 (ratings/review counts; review text restricted by policy) | `needs_credentials` |
 | Alibaba / AliExpress | Open Platform APIs | `needs_credentials` |
 | X | API v2 recent search (paid tier for reads) | `needs_credentials` |

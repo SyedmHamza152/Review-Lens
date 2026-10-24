@@ -90,8 +90,20 @@ class Settings(BaseSettings):
     TIKTOK_CLIENT_KEY: str | None = None
     TIKTOK_CLIENT_SECRET: str | None = None
 
+    # --- Daraz Open Platform (official seller-authorized review APIs) ---
+    # Register at open.daraz.com: Create Account -> apply for an API category
+    # -> App Console -> App Key/App Secret -> seller authorization -> token.
+    # With all three set, real buyer reviews are fetched via
+    # /review/seller/history/list + /review/seller/list/v2 (HMAC-SHA256
+    # signed per the LAZOP protocol). Without them the platform shows
+    # catalog aggregates only and says exactly what is missing.
     DARAZ_APP_KEY: str | None = None
     DARAZ_APP_SECRET: str | None = None
+    DARAZ_ACCESS_TOKEN: str | None = None
+    DARAZ_COUNTRY: str = "pk"          # pk | bd | lk | np | mm
+    DARAZ_SIGN_METHOD: str = "sha256"  # sha256 (HMAC-SHA256) | hmac (HMAC-MD5)
+    DARAZ_REVIEWS_TARGET: int = 50
+    DARAZ_LOOKBACK_DAYS: int = 90      # platform limit for review history
 
     AMAZON_PARTNER_TAG: str | None = None
     AMAZON_ACCESS_KEY: str | None = None

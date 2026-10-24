@@ -41,6 +41,9 @@ def platform_listing() -> list[dict]:
             "live_capability": adapter.live_capability,
             "has_credentials": adapter.has_credentials,
             "required_env": adapter.required_env,
+            # Env vars that unlock ADDITIONAL capability on top of a live
+            # baseline (e.g. Daraz review TEXT via Open Platform).
+            "optional_env": list(getattr(adapter, "optional_env", []) or []),
             "access_mode": adapter.access_mode,
             "notes": adapter.notes,
             "docs_url": adapter.docs_url,

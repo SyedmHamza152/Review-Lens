@@ -10,6 +10,8 @@ export interface PlatformInfo {
   live_capability: "live" | "requires_credentials" | "not_available";
   has_credentials: boolean;
   required_env: string[];
+  /** Env vars that unlock additional capability on top of a live baseline (e.g. Daraz review text). */
+  optional_env?: string[];
   access_mode: string;
   notes: string;
   docs_url: string;

@@ -70,3 +70,25 @@ Stage Summary:
 - Live platforms: YouTube (NEW, no key needed), Reddit archive, Hacker News, Daraz catalog aggregates; 9 others honest as needs_credentials/unsupported
 - 50-comment minimum enforced per user spec: >=50 -> full analysis; <50 -> exact "comments less than 50 on that platform" message, raw comments still viewable, no fabricated analysis
 - Daraz review text remains impossible from datacenter IPs (Alibaba anti-bot) - Open Platform creds (DARAZ_APP_KEY/SECRET) or non-datacenter deployment unlock it; message states this honestly
+
+---
+Task ID: 4
+Agent: main (Z.ai)
+Task: Implement official Daraz Open Platform API client (user pasted the Open Platform API test docs after "daraz does not able to fetch the comment")
+
+Work Log:
+- Researched official docs: open.daraz.com/doc/api.htm (Daraz mirrors Lazada Open Platform/LAZOP protocol - shared doc node IDs). Signature algorithm from official developer guide: sort params ASCII -> concat key+value -> prepend API path -> HMAC-SHA256 (sign_method=sha256) or HMAC-MD5 (sign_method=hmac) with app secret -> uppercase hex. Official worked example: secret "helloworld", /order/get -> 4190D32361CFB9581350222F345CB77F3B19F0E31D162316848A2C1FFD5FAB4A (reproduced verbatim in tests)
+- Product Review API section: /review/seller/history/list (item_id + start/end ms, 7-day max span, 90-day history, max 50 pages -> id_list) + /review/seller/list/v2 (id_list max 10 -> review_content, ratings.overall_rating, submit_time, product_id, review_type). Endpoints: api.daraz.pk (PK), .com.bd, .lk, .com.np, shop.com.mm
+- New backend/app/integrations/daraz_open_platform.py: DarazOpenPlatformClient (signed GET w/ epoch-ms timestamp, business-error mapping code!=0 -> DarazOpenPlatformError, TRAFFIC_CONTROL backoff, 0.35s pacing), sign_request/sign_request_hmac_md5, search_products (/products/get filter=search), collect_review_items orchestration (products -> 7-day window walk -> id dedupe -> batched bodies -> ReviewItem w/ rating/date/source_url/product PDP url, diagnostics per stage)
+- Replaced the old placeholder _search_open_platform (wrong method name/MD5/datetime-format timestamp/wrong base URL) in DarazAdapter: open_platform_ready checks DARAZ_APP_KEY+SECRET+ACCESS_TOKEN; with creds -> official client first, real review text + honest seller-scope message; API errors -> BLOCKED with raw [code] message; missing creds -> catalog aggregates live + precise setup message (exact 3 env vars + open.daraz.com registration steps)
+- Config: +DARAZ_ACCESS_TOKEN, DARAZ_COUNTRY (pk/bd/lk/np/mm), DARAZ_SIGN_METHOD (sha256|hmac), DARAZ_REVIEWS_TARGET=50, DARAZ_LOOKBACK_DAYS=90; .env.example rewritten with 5-step registration guide + seller-scope note
+- registry.platform_listing exposes optional_env (unlock-only vars on live baseline); frontend types + PlatformChip tooltip shows "Unlocks more data with: DARAZ_APP_KEY . DARAZ_APP_SECRET . DARAZ_ACCESS_TOKEN"
+- LIVE PROBE: signed /brands/get with dummy creds -> api.daraz.pk REACHABLE from this deployment, server replied business error InvalidAppKey (protocol accepted by real server; storefront RGV587 block does NOT affect the Open Platform gateway)
+- Tests: new tests/test_daraz_open_platform.py, 11 cases (official signature vector, hex/order/endpoint tables, signed URL assembly, business error propagation, 403 mapping, full mocked collection e2e incl. 10-id batch limit + field mapping, empty product match, adapter w/o creds honest, adapter w/ creds collects, auth error surfacing). Full suite 74 passed
+- E2E "cricket bat" + daraz + youtube (job 2a99496f-5ed5-4c62-afcd-c53057180ec3): YouTube 120 real comments -> 118 analyzed >= 50 -> verdict Mixed 72.3; Daraz 40 live listings + 0 text comments (no creds configured) with exact below-minimum message; browser-verified LIVE DATA badge, real comment cells in Review explorer, Daraz banner; screenshot download/cricket-bat-daraz-openplatform.png
+
+Stage Summary:
+- Daraz now speaks the REAL official Open Platform protocol (user-pasted docs implemented exactly): the moment DARAZ_APP_KEY + DARAZ_APP_SECRET + DARAZ_ACCESS_TOKEN are set in backend/.env, real buyer comments flow through the signed review APIs
+- Gateway verified reachable from deployment -> credentials are the ONLY missing piece; message in UI tells the user exactly that + how to register
+- Review APIs are seller-scoped by Daraz's design (authorized seller's own listings); system states this honestly instead of pretending otherwise
+- 74 tests green; backend restarted via py-health spawn (pid 12153)

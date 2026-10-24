@@ -22,12 +22,6 @@ Adapters report honest status (`needs_credentials` with the exact env vars,
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
-import json
-from datetime import datetime
-from urllib.parse import urlencode
-
 import requests
 
 from app.core.config import settings
@@ -61,22 +55,40 @@ class DarazAdapter(_OpenPlatformAdapter):
     key = "daraz"
     name = "Daraz"
     access_mode = ("LIVE rating aggregates from the public daraz.pk storefront catalog; "
-                   "review TEXT via Daraz Open Platform API (authorized app required)")
+                   "review TEXT via the official Daraz Open Platform API "
+                   "(/review/seller/history/list + /review/seller/list/v2, "
+                   "signed with HMAC-SHA256 per the LAZOP protocol)")
     required_env: list[str] = []   # catalog aggregates need no credentials
-    docs_url = "https://open.daraz.com/"
+    # Review TEXT via the Open Platform needs a full seller-authorized app:
+    optional_env = ["DARAZ_APP_KEY", "DARAZ_APP_SECRET", "DARAZ_ACCESS_TOKEN"]
+    docs_url = "https://open.daraz.com/doc/api.htm"
     notes = ("Real product listings with average rating + review counts + prices "
-             "collected live. Written review text needs Open Platform approval - "
-             "configure DARAZ_APP_KEY/DARAZ_APP_SECRET to activate it.")
+             "collected live. Written review text uses the official Daraz Open "
+             "Platform API and needs your authorized app credentials - set "
+             "DARAZ_APP_KEY, DARAZ_APP_SECRET and DARAZ_ACCESS_TOKEN in "
+             "backend/.env (register at open.daraz.com: Create Account -> "
+             "apply for an API category -> App Console -> App Key/Secret -> "
+             "seller authorization -> access token). Open Platform review APIs "
+             "are seller-scoped: they return buyer reviews for the authorized "
+             "seller's own listings.")
     live_capability = "live"
+
+    @property
+    def open_platform_ready(self) -> bool:
+        return bool(settings.DARAZ_APP_KEY and settings.DARAZ_APP_SECRET
+                    and settings.DARAZ_ACCESS_TOKEN)
 
     def search(self, product_name: str, description: str | None, max_items: int) -> AdapterResult:
         from app.integrations.live_sources import fetch_daraz_catalog
         listings, err = fetch_daraz_catalog(product_name,
                                             settings.DARAZ_CATALOG_MAX_ITEMS)
+
+        # ---- Official Open Platform review-text path (activates with creds) --
+        if self.open_platform_ready:
+            return self._search_open_platform(product_name, max_items, listings)
+
+        # ---- No Open Platform credentials: aggregates + honest setup path ----
         if err and not listings:
-            # catalog unavailable: with creds we could still try Open Platform
-            if settings.DARAZ_APP_KEY and settings.DARAZ_APP_SECRET:
-                return self._search_open_platform(product_name, max_items)
             return AdapterResult(self.key, AdapterStatus.BLOCKED, err)
 
         result = AdapterResult(
@@ -84,7 +96,12 @@ class DarazAdapter(_OpenPlatformAdapter):
             AdapterStatus.SUCCESS if listings else AdapterStatus.NO_RESULTS,
             (f"Collected {len(listings)} real Daraz PK catalog listing(s) with "
              "aggregate ratings/review counts from the public storefront JSON. "
-             "Written review text requires Daraz Open Platform credentials.")
+             "Written review text is not shown because Daraz Open Platform "
+             "credentials are not configured: Daraz only serves review text "
+             "through its official Open Platform API. To enable real Daraz "
+             "comments, set DARAZ_APP_KEY, DARAZ_APP_SECRET and "
+             "DARAZ_ACCESS_TOKEN in backend/.env (register an app at "
+             "open.daraz.com, then complete seller authorization).")
             if listings else "Daraz catalog returned no listings for this query.",
             data_source="live",
         )
@@ -93,9 +110,9 @@ class DarazAdapter(_OpenPlatformAdapter):
         if not listings:
             return result
 
-        # Attempt written review text for the top listings (self-healing:
-        # currently blocked by Alibaba anti-bot for datacenter IPs - reported
-        # honestly; resumes automatically if Daraz reopens the endpoint).
+        # Self-healing storefront attempt (currently blocked by Alibaba
+        # anti-bot for datacenter IPs - reported honestly; resumes
+        # automatically if Daraz reopens the endpoint).
         from app.integrations.live_sources import fetch_daraz_reviews
         review_items, note = fetch_daraz_reviews(listings, max_items)
         if review_items:
@@ -104,53 +121,73 @@ class DarazAdapter(_OpenPlatformAdapter):
                                "from the product pages.")
         elif note:
             result.message += f" | Written reviews: {note}"
-
-        # Authorized review-text path (activates automatically with creds)
-        if settings.DARAZ_APP_KEY and settings.DARAZ_APP_SECRET and listings:
-            try:
-                text_result = self._search_open_platform(product_name, max_items)
-                if text_result.items:
-                    result.items = text_result.items
-                    result.message += (f" | Open Platform: {len(text_result.items)} "
-                                       "review text(s) collected.")
-                else:
-                    result.message += f" | Open Platform: {text_result.message}"
-            except Exception as exc:  # never lose the aggregates over text failure
-                result.message += f" | Open Platform call failed: {exc}"[:200]
         return result
 
-    def _search_open_platform(self, product_name: str, max_items: int) -> AdapterResult:
-        """Authorized Daraz Open Platform call (review text)."""
-        app_key, secret = settings.DARAZ_APP_KEY, settings.DARAZ_APP_SECRET
-        params = {
-            "method": "aliexpress.product.reviews.get",  # replaced per official spec
-            "app_key": app_key,
-            "keywords": product_name,
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-        sign_base = urlencode(sorted(params.items()))
-        params["sign"] = hmac.new(secret.encode(), sign_base.encode(), hashlib.md5).hexdigest().upper()
-        resp = self._http_get("https://api.daraz.com/rest", params)
-        if resp.status_code in (401, 403):
-            return AdapterResult(self.key, AdapterStatus.BLOCKED,
-                                 "Daraz API rejected the credentials/permissions (HTTP "
-                                 f"{resp.status_code}). Verify app approval scope.")
-        resp.raise_for_status()
-        payload = json.loads(resp.text)
-        items = [
-            ReviewItem(
-                external_id=str(r.get("review_id", i)),
-                text=str(r.get("content", "")).strip(),
-                rating=r.get("rating"),
-                variant=str(r.get("sku_name")) if r.get("sku_name") else None,
-                source_url=r.get("review_url"),
-                relevance_hint=0.85,  # product-page reviews are product-scoped
+    def _search_open_platform(self, product_name: str, max_items: int,
+                              listings: list[dict] | None = None) -> AdapterResult:
+        """Official signed Open Platform review collection (real comments)."""
+        from app.integrations.daraz_open_platform import (
+            DarazOpenPlatformClient, DarazOpenPlatformError,
+        )
+        client = DarazOpenPlatformClient(
+            app_key=settings.DARAZ_APP_KEY or "",
+            app_secret=settings.DARAZ_APP_SECRET or "",
+            access_token=settings.DARAZ_ACCESS_TOKEN or "",
+            country=settings.DARAZ_COUNTRY,
+            sign_method=settings.DARAZ_SIGN_METHOD,
+        )
+        try:
+            items, diag = client.collect_review_items(
+                product_name, target=max(settings.DARAZ_REVIEWS_TARGET, max_items))
+        except DarazOpenPlatformError as exc:
+            return AdapterResult(
+                self.key, AdapterStatus.BLOCKED,
+                f"Daraz Open Platform rejected the {exc.api_path or 'API'} call: "
+                f"[{exc.code}] {exc.message} Check that your app is approved for "
+                "the Product Review API category and the access token is valid "
+                "and not expired.",
+                data_source="live",
             )
-            for i, r in enumerate(payload.get("data", {}).get("reviews", []))
-            if str(r.get("content", "")).strip()
-        ]
-        return AdapterResult(self.key, AdapterStatus.SUCCESS, items=items[:max_items],
-                             data_source="live")
+        except Exception as exc:  # network etc. - never lose catalog aggregates
+            result = AdapterResult(
+                self.key, AdapterStatus.SUCCESS,
+                f"Open Platform collection error: {type(exc).__name__}: {exc}"[:220],
+                data_source="live",
+            )
+            result.aggregate_items = listings or []
+            return result
+
+        result = AdapterResult(
+            self.key,
+            AdapterStatus.SUCCESS if items else AdapterStatus.NO_RESULTS,
+            message="", data_source="live",
+        )
+        result.aggregate_items = listings or []
+        if items:
+            result.items = items
+            result.message = (
+                f"Collected {len(items)} REAL buyer review(s) through the official "
+                f"Daraz Open Platform API ({diag['products_matched']} of the "
+                "authorized seller's products matched, "
+                f"{diag['review_ids']} review ids, {diag['review_batches']} "
+                "batched lookups). Reviews are seller-scoped: they belong to the "
+                "authorized seller's own listings, exactly as Daraz's Product "
+                "Review API defines.")
+        elif diag["products_matched"] == 0:
+            result.message = (
+                "Open Platform connected successfully, but the authorized "
+                "seller has no products matching this keyword "
+                f"('{product_name}'). Daraz review APIs are seller-scoped: "
+                "reviews can only be fetched for the authorized seller's own "
+                "listings. Daraz offers no cross-seller public review API.")
+        else:
+            result.message = (
+                f"Open Platform connected successfully: {diag['products_matched']} "
+                f"matching product(s), {diag['review_ids']} review id(s) found, "
+                f"but 0 written review bodies (reviews older than 90 days are "
+                "not served by /review/seller/history/list, or all matched "
+                "reviews have no text).")
+        return result
 
 
 class AmazonAdapter(_OpenPlatformAdapter):
