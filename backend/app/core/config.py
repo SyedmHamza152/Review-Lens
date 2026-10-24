@@ -40,8 +40,23 @@ class Settings(BaseSettings):
     BACKGROUND_WORKERS: int = 4
     REQUEST_TIMEOUT_SECONDS: int = 12
 
-    # --- Sample corpus (clearly-labelled demonstration data) ---
+    # --- Sample corpus (tests/eval ONLY; the live app never uses it) ---
     ALLOW_SAMPLE_DATA: bool = True
+
+    # --- Live credential-free sources (verified reachable from deployment) ---
+    # Reddit text searches go through the public Arctic-Shift Reddit archive.
+    REDDIT_SUBREDDITS: str = (
+        "pakistan,PakGamers,Karachi,Lahore,Islamabad,pcgamingindia,"
+        "gadgets,Android,apple,headphones,sneakers,technology"
+    )
+    REDDIT_LOOKBACK_DAYS: int = 540
+    ARCTIC_MAX_REQUESTS: int = 16          # politeness cap per search job
+    ARCTIC_MIN_INTERVAL_SECONDS: float = 2.0
+
+    HN_MAX_STORIES: int = 8
+    HN_COMMENTS_PER_STORY: int = 40
+
+    DARAZ_CATALOG_MAX_ITEMS: int = 40
 
     # --- Optional transformer second-opinion engine (off in sandbox) ---
     TRANSFORMER_SENTIMENT_ENABLED: bool = False

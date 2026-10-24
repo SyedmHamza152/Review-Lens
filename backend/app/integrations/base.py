@@ -44,6 +44,10 @@ class AdapterResult:
     items: list[ReviewItem] = field(default_factory=list)
     is_sample: bool = False
     data_source: str = "live"  # live | sample
+    # Product LISTINGS with rating aggregates (e.g. Daraz storefront catalog:
+    # name, avg rating, review count, price). NOT reviews - never scored for
+    # sentiment; stored separately and shown as platform-side rating context.
+    aggregate_items: list[dict] = field(default_factory=list)
 
 
 class BaseAdapter(ABC):
@@ -54,6 +58,11 @@ class BaseAdapter(ABC):
     required_env: list[str] = []
     notes: str = ""
     docs_url: str = ""
+    # honest capability without any credentials:
+    #   live                  -> collects real data right now
+    #   requires_credentials  -> real client coded; activates with env keys
+    #   not_available         -> no compliant public API exists
+    live_capability: str = "requires_credentials"
 
     # ------------------------------------------------------------------
     @property
@@ -65,6 +74,8 @@ class BaseAdapter(ABC):
 
     def status_for_listing(self) -> AdapterStatus:
         """Coarse status shown on the platforms page before any search."""
+        if self.live_capability == "not_available":
+            return AdapterStatus.UNSUPPORTED
         if self.required_env and not self.has_credentials:
             return AdapterStatus.NEEDS_CREDENTIALS
         return AdapterStatus.SUCCESS

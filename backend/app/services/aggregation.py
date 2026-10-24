@@ -17,7 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.models import JobPlatformStatus, Review, SearchJob
+from app.models import JobPlatformStatus, PlatformListing, Review, SearchJob
 from app.nlp.aspect_data import ASPECT_PHRASE_NEG, ASPECT_PHRASE_POS, ASPECTS
 
 MIN_VERDICT = settings.MIN_ANALYZED_FOR_VERDICT
@@ -169,6 +169,39 @@ def analyze(db: Session, job_id: str) -> dict:
     trends = [{"period": w, "score": round(sum(v) / len(v), 3), "count": len(v)}
               for w, v in sorted(trend_groups.items())]
 
+    # ---- marketplace rating aggregates (real storefront listings) ----
+    listing_rows = db.query(PlatformListing).filter_by(job_id=job_id).all()
+    listings_by_platform: dict[str, list[PlatformListing]] = defaultdict(list)
+    for l in listing_rows:
+        listings_by_platform[l.platform].append(l)
+    marketplace_listings = []
+    for plat, rows in listings_by_platform.items():
+        rated = [r for r in rows if r.rating is not None]
+        st = status_map.get(plat)
+        marketplace_listings.append({
+            "platform": plat,
+            "platform_name": (st.platform_name if st else plat.title()),
+            "listing_count": len(rows),
+            "avg_rating": round(sum(r.rating for r in rated) / len(rated), 2) if rated else None,
+            "total_review_count": sum(r.review_count for r in rows),
+            "data_source": rows[0].data_source if rows else "live",
+            "note": ("Marketplace-side rating aggregates for matching listings - "
+                     "NOT customer sentiment; shown for context only."),
+            "items": [
+                {
+                    "name": r.name,
+                    "rating": r.rating,
+                    "review_count": r.review_count,
+                    "price_text": r.price_text,
+                    "seller": r.seller,
+                    "sold_count_text": r.sold_count_text,
+                    "url": r.source_url,
+                }
+                for r in sorted(rows, key=lambda x: -(x.review_count or 0))[:8]
+            ],
+        })
+    marketplace_listings.sort(key=lambda x: -x["total_review_count"])
+
     # ---- totals ----
     spam_count = sum(1 for r in reviews_all if r.is_spam)
     dup_saved = getattr(job, "dup_count", None)
@@ -238,6 +271,7 @@ def analyze(db: Session, job_id: str) -> dict:
         "comparison": comparison,
         "languages": languages,
         "trends": trends,
+        "marketplace_listings": marketplace_listings,
         "methodology": {
             "nlp_pipeline": settings.NLP_PIPELINE_VERSION,
             "scoring": verdict["methodology_note"],
@@ -250,7 +284,10 @@ def analyze(db: Session, job_id: str) -> dict:
             "disclaimers": [
                 "Sentiment percentages describe the collected sample, not the market.",
                 "Platform comparison must consider sample size and audience differences.",
-                "Sample-data mode uses synthetic comments for demonstration only.",
+                "All reviews/comments are collected live from platform APIs; when a "
+                "platform cannot be accessed, it is reported as such - never simulated.",
+                "Marketplace rating aggregates (e.g. Daraz) are the platform's own "
+                "counters, not our sentiment analysis.",
                 "A higher positive percentage does not make a platform 'better'.",
             ],
         },
@@ -285,7 +322,10 @@ def build_summary(product_name: str, verdict: dict, counts: Counter, total: int,
     if total < MIN_VERDICT:
         return (f"Insufficient usable data was collected for {product_name} "
                 f"({total} analyzed comments), so no reliable verdict can be "
-                "made. Try enabling more platforms or provide API credentials.")
+                "made. Live sources (Reddit public archive, Hacker News, Daraz "
+                "catalog) returned too few product-specific comments for this "
+                "query - try a more common product name or configure platform "
+                "API credentials.")
     top_aspects = [a for a in aspects if a["mentions"] >= 2][:3]
     main_pos = [a["label"] for a in top_aspects if a["positive"] > a["negative"]]
     main_neg = [a["label"] for a in top_aspects if a["negative"] > a["positive"]]

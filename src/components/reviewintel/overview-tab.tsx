@@ -9,11 +9,12 @@ import {
   AspectChart, LanguagePie, PlatformStackedBar, SentimentByLanguageBar,
   SentimentDonut, TrendLine, VolumeBar,
 } from "./charts";
-import { AlertTriangle, CheckCircle2, Gauge, Info, Languages, MessageSquare, ShieldCheck, ThumbsDown, ThumbsUp, TrendingUp } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Gauge, Info, Languages, MessageSquare, ShieldCheck, Store, ThumbsDown, ThumbsUp, TrendingUp } from "lucide-react";
 
 export function OverviewTab({ report }: { report: Report }) {
   const { verdict, totals, distribution, aspects, advantages, complaints } = report;
   const isSample = report.job.data_mode === "sample";
+  const listings = report.marketplace_listings ?? [];
 
   return (
     <div className="space-y-6">
@@ -21,13 +22,22 @@ export function OverviewTab({ report }: { report: Report }) {
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
           <p>
-            <b>Sample data mode.</b> Live platform APIs were not accessible (credentials
-            required / ToS-restricted), so this report is built on the clearly-labelled
-            synthetic sample corpus. It demonstrates the full pipeline and is never
-            presented as real collected reviews.
+            <b>Sample data mode.</b> This is a legacy demonstration job built on the
+            clearly-labelled synthetic sample corpus. New searches collect live data
+            from platform APIs only.
           </p>
         </div>
-      ) : null}
+      ) : (
+        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+          <p>
+            <b>Live data.</b> All reviews and comments in this report were collected
+            directly from platform APIs at analysis time — no synthetic or demo data is
+            included. Sources that could not be accessed are listed with their exact
+            status below.
+          </p>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -57,6 +67,52 @@ export function OverviewTab({ report }: { report: Report }) {
           sub={`of ${totals.platforms_requested} requested`}
         />
       </div>
+
+      {/* Marketplace rating snapshots (real storefront aggregates) */}
+      {listings.length > 0 ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Store className="size-4 text-primary" /> Marketplace rating snapshots
+            </CardTitle>
+            <p className="text-xs font-normal text-muted-foreground">
+              Real product listings with the marketplace's own average rating and review
+              counts, collected live from the storefront. These are platform-side counters —
+              NOT our sentiment analysis and NOT part of the verdict score.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {listings.map((g) => (
+              <div key={g.platform} className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <Badge variant="outline" className="border-emerald-500/40 text-emerald-700">
+                    {g.platform_name} · {g.listing_count} listings
+                  </Badge>
+                  {g.avg_rating !== null ? (
+                    <span className="text-xs text-muted-foreground">
+                      avg rating {g.avg_rating}/5 · {g.total_review_count.toLocaleString()} total ratings
+                    </span>
+                  ) : null}
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {g.items.map((it, i) => (
+                    <a key={i} href={it.url ?? "#"} target="_blank" rel="noreferrer"
+                      className="rounded-md border px-3 py-2 text-xs transition-colors hover:bg-muted/50">
+                      <p className="line-clamp-1 font-medium">{it.name}</p>
+                      <p className="mt-0.5 text-muted-foreground">
+                        {it.rating !== null ? `★ ${it.rating.toFixed(1)}` : "unrated"}
+                        {" · "}{it.review_count.toLocaleString()} ratings
+                        {it.price_text ? ` · ${it.price_text}` : ""}
+                        {it.sold_count_text ? ` · ${it.sold_count_text}` : ""}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Verdict + donut */}
       <div className="grid gap-4 lg:grid-cols-3">

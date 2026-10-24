@@ -39,7 +39,7 @@ def test_full_search_flow(client):
     job = _wait_completed(client, job_id)
     assert job["status"] == "completed"
     assert job["progress"] == 100
-    assert len(job["platforms"]) == 12
+    assert len(job["platforms"]) == 13
     # sample fallback marked transparently
     assert any(p["status"] in ("success", "success_sample") for p in job["platforms"])
 

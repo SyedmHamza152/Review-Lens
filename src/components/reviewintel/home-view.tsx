@@ -9,14 +9,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ensureBackend, pyFetch } from "@/lib/pyapi";
 import type { PlatformInfo } from "@/lib/types";
 import {
-  AlertTriangle, BarChart3, CheckCircle2, Globe, Loader2, Search,
-  ShieldCheck, Store, Users, XCircle,
+  AlertTriangle, BarChart3, CheckCircle2, Globe, Loader2, Radio,
+  Search, ShieldCheck, Store, Users, XCircle,
 } from "lucide-react";
 
 const PLATFORM_ICON: Record<string, React.ReactNode> = {
@@ -35,7 +33,6 @@ export function HomeView({
   const [description, setDescription] = useState("");
   // null => all platforms selected (derived, no effect needed)
   const [selected, setSelected] = useState<Set<string> | null>(null);
-  const [includeSample, setIncludeSample] = useState(true);
   const [formError, setFormError] = useState("");
 
   const { data: backend } = useQuery({
@@ -52,6 +49,7 @@ export function HomeView({
 
   const allKeys = platforms?.platforms.map((p) => p.key) ?? [];
   const activeSelection: Set<string> = selected ?? new Set(allKeys);
+  const liveCount = platforms?.platforms.filter((p) => p.live_capability === "live").length ?? 0;
 
   const search = useMutation({
     mutationFn: () =>
@@ -63,7 +61,7 @@ export function HomeView({
           platforms: activeSelection.size && activeSelection.size !== allKeys.length
             ? Array.from(activeSelection)
             : null,
-          include_sample: includeSample,
+          include_sample: false, // live platform data only
         }),
       }),
     onSuccess: (data) => onSearch(data.job_id, productName),
@@ -95,7 +93,8 @@ export function HomeView({
       {/* Hero */}
       <section className="pt-10 text-center sm:pt-14">
         <Badge variant="secondary" className="mb-4 gap-1.5">
-          <Globe className="size-3" /> 6 marketplaces · 6 social platforms · EN + اردو + Roman Urdu
+          <Radio className="size-3 text-emerald-600" />
+          {liveCount} live sources · Reddit · Hacker News · Daraz PK · EN + اردو + Roman Urdu
         </Badge>
         <h1 className="mx-auto max-w-3xl text-3xl font-bold tracking-tight sm:text-5xl">
           How do customers <span className="text-primary">really</span> feel about a product?
@@ -180,21 +179,20 @@ export function HomeView({
                 )}
               </div>
 
-              {/* Sample data toggle */}
-              <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+              {/* Live data notice (replaces the old sample-data toggle) */}
+              <div className="flex items-start justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
                 <div className="space-y-0.5">
-                  <Label htmlFor="sample-toggle" className="flex items-center gap-2 text-sm font-medium">
-                    <AlertTriangle className="size-4 text-amber-600" />
-                    Include clearly-labelled sample dataset
+                  <Label className="flex items-center gap-2 text-sm font-medium">
+                    <Radio className="size-4 text-emerald-600" />
+                    Live platform data only
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Marketplaces/social APIs require platform approval. When live access is
-                    unavailable, a synthetic <b>sample corpus</b> (English / Urdu / Roman
-                    Urdu) is used so the full pipeline can be demonstrated. Sample items are
-                    always badged <b>SAMPLE</b> and never shown as real reviews.
+                    Every review, comment and rating shown is collected <b>live</b> from platform
+                    APIs — Reddit via the public archive, Hacker News via its public search API,
+                    and Daraz PK storefront rating aggregates. Platforms that require API
+                    credentials (YouTube, X, Amazon…) stay clearly marked and are never simulated.
                   </p>
                 </div>
-                <Switch id="sample-toggle" checked={includeSample} onCheckedChange={setIncludeSample} />
               </div>
 
               {formError ? (
@@ -219,7 +217,7 @@ export function HomeView({
       {/* How it works */}
       <section className="mt-12 grid gap-4 pb-12 sm:grid-cols-2 lg:grid-cols-4">
         <Feature icon={<Search className="size-5" />} title="1 · Collect"
-          text="Authorized platform APIs collect reviews, ratings and public comments. Each adapter is independent — one failure never blocks the rest, and integration status is always shown honestly." />
+          text="Live platform APIs collect reviews, ratings and public comments. Each adapter is independent — one failure never blocks the rest, and integration status is always shown honestly. Nothing is ever simulated." />
         <Feature icon={<Globe className="size-5" />} title="2 · Understand"
           text="Language detection for English, Urdu script, Roman Urdu and mixed comments, with spelling-variant normalization (bohat/bahut/bohot…) and confidence scores." />
         <Feature icon={<BarChart3 className="size-5" />} title="3 · Analyze"
@@ -247,10 +245,16 @@ function PlatformChip({ p, selected, onToggle }: {
           <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={`Toggle ${p.name}`} />
           {PLATFORM_ICON[p.type]}
           <span className="truncate">{p.name}</span>
-          {p.has_credentials ? (
+          {p.live_capability === "live" ? (
+            <span className="ml-auto shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+              LIVE
+            </span>
+          ) : p.has_credentials ? (
             <CheckCircle2 className="ml-auto size-3.5 shrink-0 text-emerald-600" />
-          ) : (
+          ) : p.live_capability === "not_available" ? (
             <XCircle className="ml-auto size-3.5 shrink-0 text-muted-foreground/60" />
+          ) : (
+            <AlertTriangle className="ml-auto size-3.5 shrink-0 text-amber-500/80" />
           )}
         </label>
       </TooltipTrigger>

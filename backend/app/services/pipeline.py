@@ -124,10 +124,40 @@ def process_adapter_result(db: Session, job_id: str, result: AdapterResult,
             duplicates += 1
         # spam/low-relevance still stored (flagged) for transparency
     db.commit()
+
+    # ---- rating aggregates (e.g. Daraz storefront listings) ----
+    listings_stored = 0
+    if result.aggregate_items:
+        from app.models import PlatformListing
+        for agg in result.aggregate_items:
+            ext = str(agg.get("external_id", ""))[:240]
+            if not ext or not str(agg.get("name", "")).strip():
+                continue
+            exists = db.query(PlatformListing.id).filter_by(
+                job_id=job_id, platform=result.platform, external_id=ext).first()
+            if exists:
+                continue
+            db.add(PlatformListing(
+                job_id=job_id, platform=result.platform, external_id=ext,
+                name=str(agg.get("name", ""))[:280],
+                rating=agg.get("rating"),
+                review_count=int(agg.get("review_count") or 0),
+                price_text=agg.get("price_text"),
+                seller=agg.get("seller"),
+                brand=agg.get("brand"),
+                location=agg.get("location"),
+                sold_count_text=agg.get("sold_count_text"),
+                source_url=agg.get("url"),
+                data_source=result.data_source,
+            ))
+            listings_stored += 1
+        db.commit()
+
     return {
         "platform": result.platform,
         "collected": len(result.items),
         "stored": stored,
         "duplicates": duplicates,
+        "listings_stored": listings_stored,
         "relevance_threshold": settings.RELEVANCE_THRESHOLD,
     }

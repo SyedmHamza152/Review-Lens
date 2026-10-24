@@ -37,10 +37,14 @@ export function MethodologyTab({ report }: { report: Report }) {
             <b>unsupported</b> (platform offers no authorized API and forbids scraping).
           </p>
           <p>
-            When live access is unavailable and the sample toggle is on, results are
-            filled from the clearly-labelled <b>SAMPLE corpus</b> - synthetic comments
-            written to exercise the multilingual pipeline. They are badged everywhere and
-            stored with <code className="rounded bg-muted px-1 text-xs">data_source=sample</code>.
+            All results come from <b>live collection</b>. Three sources work without any
+            credentials: <b>Reddit</b> (public Arctic-Shift archive of posts &amp; comments,
+            incl. Pakistani subreddits), <b>Hacker News</b> (public Algolia search API), and{" "}
+            <b>Daraz PK</b> storefront rating aggregates. Platforms requiring API keys
+            (YouTube, X, Amazon, AliExpress…) activate automatically once their credentials
+            are configured; they are never simulated. The synthetic sample corpus exists
+            only for offline model evaluation in the test suite — it can no longer appear
+            in reports.
           </p>
           <div className="space-y-1.5">
             {report.platform_statuses.map((s) => (

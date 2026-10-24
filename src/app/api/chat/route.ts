@@ -18,7 +18,7 @@ function buildContext(report: any, reviews: any[]): string {
   const lines: string[] = [];
   lines.push(`PRODUCT: ${report.job.product_name}`);
   lines.push(`DESCRIPTION: ${report.job.description ?? "n/a"}`);
-  lines.push(`DATA_MODE: ${report.job.data_mode} (sample = synthetic demonstration data, NOT real reviews)`);
+  lines.push(`DATA_MODE: ${report.job.data_mode} (live = collected from real platform APIs at analysis time; sample = synthetic demonstration data which must never be presented as real)`);
   lines.push(
     `VERDICT: ${v.label} | score ${v.score}/100 | positive ${v.positive_pct}% | negative ${v.negative_pct}% | neutral ${v.neutral_pct}% | mixed ${v.mixed_pct}% | analyzed ${t.analyzed} comments`,
   );
@@ -31,6 +31,12 @@ function buildContext(report: any, reviews: any[]): string {
       lines.push(
         `- ${c.platform_name}: n=${c.total}, pos=${c.positive_pct}%, neg=${c.negative_pct}%, mixed=${c.mixed_pct}%, rating=${c.avg_rating ?? "n/a"}, low_sample=${c.low_sample}, top_complaint=${c.top_complaint_aspect ?? "n/a"}`,
       );
+    }
+  }
+  if (report.marketplace_listings?.length) {
+    lines.push("MARKETPLACE RATING SNAPSHOTS (platform's own avg ratings & review counts - NOT sentiment analysis):");
+    for (const g of report.marketplace_listings) {
+      lines.push(`- ${g.platform_name}: ${g.listing_count} listings, avg_rating=${g.avg_rating ?? "n/a"}, total_ratings=${g.total_review_count}`);
     }
   }
   if (report.aspects?.length) {
@@ -52,9 +58,10 @@ function buildContext(report: any, reviews: any[]): string {
     }
   }
   lines.push(
-    "REMINDERS: sentiment percentages describe the collected sample only, not the market; " +
+    "REMINDERS: all reviews/comments are LIVE data collected from platform APIs; " +
+    "sentiment percentages describe the collected sample only, not the market; " +
     "sample-size caveats apply (low_sample=true platforms are unreliable for ranking); " +
-    "if DATA_MODE includes sample data, say so when giving platform-specific claims.",
+    "marketplace rating snapshots are the platforms' own counters, not sentiment scores.",
   );
   return lines.join("\n");
 }

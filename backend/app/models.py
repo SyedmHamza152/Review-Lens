@@ -126,6 +126,35 @@ class Review(Base):
     )
 
 
+class PlatformListing(Base):
+    """Real product listings with rating aggregates (e.g. Daraz storefront).
+
+    These are NOT reviews and are never sentiment-scored; they give the
+    platform-side rating context (avg rating, review volume, price) for the
+    same product query. `review_count` is the marketplace's own counter.
+    """
+    __tablename__ = "platform_listings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(String(36), ForeignKey("search_jobs.id"), index=True)
+    platform: Mapped[str] = mapped_column(String(40), index=True)
+    external_id: Mapped[str] = mapped_column(String(240), default="")
+    name: Mapped[str] = mapped_column(Text)
+    rating: Mapped[float | None] = mapped_column(Float, nullable=True)
+    review_count: Mapped[int] = mapped_column(Integer, default=0)
+    price_text: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    seller: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    brand: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    sold_count_text: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data_source: Mapped[str] = mapped_column(String(12), default="live")
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "platform", "external_id", name="uq_listing_external"),
+    )
+
+
 class ReportCache(Base):
     __tablename__ = "report_cache"
 

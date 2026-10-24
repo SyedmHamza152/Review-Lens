@@ -7,6 +7,7 @@ export interface PlatformInfo {
   name: string;
   type: "marketplace" | "social";
   status: string;
+  live_capability: "live" | "requires_credentials" | "not_available";
   has_credentials: boolean;
   required_env: string[];
   access_mode: string;
@@ -113,6 +114,25 @@ export interface TrendPoint {
   count: number;
 }
 
+export interface MarketplaceListingGroup {
+  platform: string;
+  platform_name: string;
+  listing_count: number;
+  avg_rating: number | null;
+  total_review_count: number;
+  data_source: string;
+  note: string;
+  items: {
+    name: string;
+    rating: number | null;
+    review_count: number;
+    price_text: string | null;
+    seller: string | null;
+    sold_count_text: string | null;
+    url: string | null;
+  }[];
+}
+
 export interface PhraseCount {
   phrase: string;
   count: number;
@@ -147,6 +167,7 @@ export interface Report {
   comparison: ComparisonRow[];
   languages: LanguageRow[];
   trends: TrendPoint[];
+  marketplace_listings: MarketplaceListingGroup[];
   methodology: {
     nlp_pipeline: string;
     scoring: string;

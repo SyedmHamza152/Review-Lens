@@ -41,16 +41,18 @@ Browser ──> Caddy gateway (:81, preview URL)
 | `app/services/aggregation.py` | verdict scoring, platform comparison, aspects, languages, trends |
 | `app/services/exporter.py` | CSV + PDF report |
 | `app/nlp/` | language detection, Roman-Urdu normalization, sentiment engine, ABSA, gloss translation |
-| `app/integrations/` | 12 platform adapters + sample corpus |
+| `app/integrations/live_sources.py` | live credential-free connectors: Reddit (public archive), Hacker News (Algolia), Daraz PK catalog |
+| `app/integrations/` | 13 platform adapters (sample corpus kept for tests/eval only) |
 
 ### Database (SQLAlchemy 2.0)
 
 Tables: `search_jobs`, `job_platform_status`, `product_matches`, `reviews`,
-`report_cache`. Original text, normalized analysis text and translation are
-stored separately; `(job_id, platform, external_id)` + normalized-text hash
-prevent double counting. Sandbox uses SQLite; set
+`platform_listings`, `report_cache`. Original text, normalized analysis text and
+translation are stored separately; `(job_id, platform, external_id)` +
+normalized-text hash prevent double counting. `platform_listings` stores real
+marketplace rating aggregates (never sentiment-scored). Sandbox uses SQLite; set
 `SQLALCHEMY_DATABASE_URL=postgresql+psycopg://...` for PostgreSQL and run
-`alembic upgrade head` (initial migration included in `backend/alembic/versions`).
+`alembic upgrade head` (migrations included in `backend/alembic/versions`).
 
 ---
 
@@ -96,25 +98,30 @@ when model downloads are available.
 
 ## 3. Data access reality (no fabricated data)
 
+Verified live from this deployment (2026-10):
+
 | Platform | Access mode | Status without credentials |
 |---|---|---|
-| Daraz | Open Platform API (partner approval) | `needs_credentials` (env vars listed) |
+| Reddit | **LIVE**: public Arctic-Shift archive API (posts + comments, incl. Pakistani subreddits); official OAuth API used automatically when creds configured | `success` (live) |
+| Hacker News | **LIVE**: public HN Algolia search API (stories + comments) | `success` (live) |
+| Daraz | **LIVE rating aggregates**: public storefront catalog JSON (avg rating, review counts, prices, sellers). Written review TEXT via Open Platform API | `success` (aggregates live); review text `needs_credentials` |
 | Amazon | PA-API 5 (ratings/review counts; review text restricted by policy) | `needs_credentials` |
 | Alibaba / AliExpress | Open Platform APIs | `needs_credentials` |
-| Temu / SHEIN | **No public API; ToS forbids scraping** | `unsupported` (by design) |
-| Reddit | Official OAuth API | `needs_credentials` |
-| YouTube | Data API v3 (search + commentThreads) | `needs_credentials` |
+| YouTube | Data API v3 (search + commentThreads) — reachable, key required | `needs_credentials` |
 | X | API v2 recent search (paid tier for reads) | `needs_credentials` |
-| Facebook / Instagram | Graph API (search retired / App Review) | `needs_credentials` → `blocked` |
+| Facebook / Instagram | Graph API (search retired / App Review) | `not_available` |
+| Temu / SHEIN | **No public API; ToS forbids scraping** | `unsupported` (by design) |
 
-- With credentials configured in `backend/.env`, adapters perform **real**
+- The synthetic sample corpus is **test/eval only** — it can no longer appear in
+  app reports. `POST /api/search` defaults to `include_sample=false` and the UI
+  has no sample toggle.
+- With credentials configured in `backend/.env`, gated adapters perform **real**
   authorized calls (retry with exponential backoff, timeouts, upstream errors
   surfaced as `blocked`/`error`).
-- When live access is unavailable and **“Include sample dataset”** is ON, the
-  report is filled from a clearly-labelled synthetic corpus (EN/UR/Roman Urdu,
-  sarcasm, spam, seller-vs-product complaints). Every layer marks it:
-  `success_sample` status, SAMPLE badges, `data_source=sample` in DB, and an
-  amber banner on the dashboard. Sample mode is **never** presented as real data.
+- Reddit collection strategy: light per-subreddit fetch + local mention matching
+  (the archive's text-search endpoint is aggressively rate-limited; it is used
+  only opportunistically and degrades gracefully). Politeness: paced calls,
+  bounded requests per job, descriptive User-Agent.
 
 ---
 
@@ -149,8 +156,8 @@ Never commit real credentials.
 | Endpoint | Description |
 |---|---|
 | `GET /api/health` | service + DB status |
-| `GET /api/platforms` | capability/status matrix for all 12 platforms |
-| `POST /api/search` | create search job `{product_name, description?, platforms?, include_sample}` |
+| `GET /api/platforms` | capability/status matrix for all 13 platforms |
+| `POST /api/search` | create search job `{product_name, description?, platforms?}` (live data only) |
 | `GET /api/jobs/{id}` | job status + per-platform status (poll) |
 | `GET /api/jobs/{id}/report` | full aggregated report (verdict, comparison, aspects, languages, trends) |
 | `GET /api/jobs/{id}/reviews` | filterable/sortable/paginated review explorer |

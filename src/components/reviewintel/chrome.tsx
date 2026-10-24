@@ -58,9 +58,9 @@ export function RiFooter() {
         <p>
           Sentiment percentages describe the collected sample only and are not customer
           ratings or verified quality measures. Platform comparisons must consider sample
-          size and audience composition. Comments are collected via authorized APIs;
-          clearly-labelled SAMPLE data is used when no live access is available and is
-          never presented as real reviews.
+          size and audience composition. Reviews and comments are collected live from
+          platform APIs; sources that cannot be accessed are reported honestly and are
+          never simulated or substituted.
         </p>
       </div>
     </footer>

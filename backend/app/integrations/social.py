@@ -1,11 +1,12 @@
-"""Social media adapters (Reddit, YouTube, X, Facebook, Instagram, TikTok).
+"""Social media adapters (Reddit, Hacker News, YouTube, X, Facebook, Instagram, TikTok).
 
-Verified data-access situation (MVP, honest reporting):
+Verified data-access situation (re-verified from this deployment, 2026-10):
 
 | Platform  | Access                                                                      |
 |-----------|------------------------------------------------------------------------------|
-| Reddit    | Official OAuth API (script app). Public read-only search needs client        |
-|           | id/secret. Unauthenticated JSON endpoints are blocked on most cloud IPs.     |
+| Reddit    | LIVE with no credentials via the public Arctic-Shift Reddit archive API.     |
+|           | Official OAuth API used automatically when client id/secret are configured.  |
+| HN        | LIVE with no credentials via the public HN Algolia search API.               |
 | YouTube   | YouTube Data API v3 with API key: search + commentThreads (public comments). |
 | X         | X API v2 recent search (Bearer token); comments retrieval is a paid tier.    |
 | Facebook  | Graph API Pages/Search is heavily restricted; keyword search of public posts |
@@ -13,8 +14,8 @@ Verified data-access situation (MVP, honest reporting):
 | Instagram | Graph API hashtag search needs Business/Creator account + App Review.        |
 | TikTok    | Research API (academic/commercial approval) or Display API - gated.          |
 
-When credentials are absent, each adapter reports `needs_credentials` with the
-exact environment variables; when calls fail (403/region/IP blocks) it reports
+When credentials are absent, each gated adapter reports `needs_credentials` with
+the exact environment variables; when calls fail (403/region/IP blocks) it reports
 `blocked`. No fabricated posts, ever.
 """
 from __future__ import annotations
@@ -32,6 +33,7 @@ TIMEOUT = settings.REQUEST_TIMEOUT_SECONDS
 
 class _SocialAdapter(BaseAdapter):
     type = "social"
+    live_capability = "requires_credentials"
 
     def _needs_credentials(self) -> AdapterResult:
         return AdapterResult(
@@ -48,14 +50,23 @@ class _SocialAdapter(BaseAdapter):
 class RedditAdapter(_SocialAdapter):
     key = "reddit"
     name = "Reddit"
-    access_mode = "Reddit OAuth API (script app) - public posts/comments"
-    required_env = ["REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET"]
+    access_mode = ("LIVE via public Arctic-Shift Reddit archive (no credentials); "
+                   "official OAuth API when REDDIT_CLIENT_ID/SECRET are configured")
+    required_env: list[str] = []   # OAuth is optional - archive path needs none
     docs_url = "https://www.reddit.com/dev/api/"
-    notes = "Official OAuth search across public subreddits; user-agent required."
+    notes = ("Real public posts + comments mentioning the product, collected from "
+             "product/Pakistan-focused subreddits through the public archive.")
+    live_capability = "live"
 
     def search(self, product_name: str, description: str | None, max_items: int) -> AdapterResult:
-        if not self.has_credentials:
-            return self._needs_credentials()
+        if settings.REDDIT_CLIENT_ID and settings.REDDIT_CLIENT_SECRET:
+            return self._search_oauth(product_name, max_items)
+        # LIVE credential-free path: public Reddit archive (real data)
+        from app.integrations.live_sources import collect_reddit
+        return collect_reddit(product_name, description, max_items)
+
+    def _search_oauth(self, product_name: str, max_items: int) -> AdapterResult:
+        """Official OAuth path (used automatically when credentials exist)."""
         token_resp = requests.post(
             "https://www.reddit.com/api/v1/access_token",
             data={"grant_type": "client_credentials"},
@@ -191,6 +202,7 @@ class FacebookAdapter(_SocialAdapter):
     access_mode = "Meta Graph API - public keyword search is NOT generally available"
     required_env = ["FACEBOOK_ACCESS_TOKEN"]
     docs_url = "https://developers.facebook.com/docs/graph-api"
+    live_capability = "not_available"
     notes = ("Public post keyword search was retired; only Page-owned data with "
              "permissions is accessible after App Review. Reported honestly.")
 
@@ -211,6 +223,7 @@ class InstagramAdapter(_SocialAdapter):
     access_mode = "Graph API hashtag search (Business account + App Review)"
     required_env = ["INSTAGRAM_ACCESS_TOKEN"]
     docs_url = "https://developers.facebook.com/docs/instagram-api"
+    live_capability = "not_available"
     notes = "Hashtag search limited to business accounts and 30 unique hashtags/7 days."
 
     def search(self, product_name: str, description: str | None, max_items: int) -> AdapterResult:
@@ -229,6 +242,7 @@ class TikTokAdapter(_SocialAdapter):
     access_mode = "TikTok Research API (approval-gated) / Display API"
     required_env = ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"]
     docs_url = "https://developers.tiktok.com/products/research-api/"
+    live_capability = "not_available"
     notes = "Comment search requires Research API approval; not available to general apps."
 
     def search(self, product_name: str, description: str | None, max_items: int) -> AdapterResult:

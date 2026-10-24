@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from app.integrations.base import AdapterStatus, BaseAdapter
+from app.integrations.live_sources import HackerNewsAdapter
 from app.integrations.marketplaces import (
     AlibabaAdapter, AliExpressAdapter, AmazonAdapter, DarazAdapter,
     SheinAdapter, TemuAdapter,
@@ -17,8 +18,8 @@ def build_adapters() -> dict[str, BaseAdapter]:
         # marketplaces
         DarazAdapter(), AmazonAdapter(), AlibabaAdapter(),
         AliExpressAdapter(), TemuAdapter(), SheinAdapter(),
-        # social
-        RedditAdapter(), YouTubeAdapter(), XAdapter(),
+        # social / discussion
+        RedditAdapter(), HackerNewsAdapter(), YouTubeAdapter(), XAdapter(),
         FacebookAdapter(), InstagramAdapter(), TikTokAdapter(),
     ]
     return {a.key: a for a in adapters}
@@ -37,13 +38,16 @@ def platform_listing() -> list[dict]:
             "name": adapter.name,
             "type": adapter.type,
             "status": status.value if isinstance(status, AdapterStatus) else str(status),
+            "live_capability": adapter.live_capability,
             "has_credentials": adapter.has_credentials,
             "required_env": adapter.required_env,
             "access_mode": adapter.access_mode,
             "notes": adapter.notes,
             "docs_url": adapter.docs_url,
         })
-    # order: marketplaces first (stable, readable)
+    # order: live sources first, then credential-gated, then unavailable
+    cap_order = {"live": 0, "requires_credentials": 1, "not_available": 2}
     type_order = {"marketplace": 0, "social": 1}
-    out.sort(key=lambda p: (type_order.get(p["type"], 9), p["name"]))
+    out.sort(key=lambda p: (cap_order.get(p["live_capability"], 9),
+                            type_order.get(p["type"], 9), p["name"]))
     return out

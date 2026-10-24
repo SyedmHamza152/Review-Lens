@@ -1,11 +1,13 @@
 """Marketplace adapters (Daraz, Amazon, Alibaba, AliExpress, Temu, SHEIN).
 
-IMPORTANT - verified data-access situation (MVP, honest reporting):
+Verified data-access situation (re-verified from this deployment, 2026-10):
 
 | Platform   | Review access                                                               |
 |------------|------------------------------------------------------------------------------|
-| Daraz      | Daraz Open Platform (App Key + Secret, partner approval). Reviews available  |
-|            | via authorized apps only. No public API.                                     |
+| Daraz      | LIVE rating AGGREGATES from the public storefront catalog JSON (avg rating,  |
+|            | review count, price, seller - the same data daraz.pk search renders). Review |
+|            | TEXT requires the Daraz Open Platform API (App Key + Secret, partner         |
+|            | approval); the authorized call is implemented and activates with creds.      |
 | Amazon     | Product Advertising API 5 (Associate tag + keys) exposes ratings/review      |
 |            | COUNTS; full review text retrieval is restricted by policy.                  |
 | Alibaba    | Alibaba Open Platform (App Key). B2B trade data; buyer reviews limited.      |
@@ -14,10 +16,8 @@ IMPORTANT - verified data-access situation (MVP, honest reporting):
 | Temu       | No public review API is offered. Scraping violates ToS - not implemented.    |
 | SHEIN      | No public review API is offered. Scraping violates ToS - not implemented.    |
 
-Each adapter below reports `needs_credentials` (exact env vars listed) or
-`unsupported` with the reason. When credentials ARE configured, the adapter
-performs the real authorized call; network/permission failures surface as
-`blocked`/`error` with the upstream message - data is never invented.
+Adapters report honest status (`needs_credentials` with the exact env vars,
+`blocked`, or `unsupported`) when access is not available. Data is never invented.
 """
 from __future__ import annotations
 
@@ -59,16 +59,52 @@ class _OpenPlatformAdapter(BaseAdapter):
 class DarazAdapter(_OpenPlatformAdapter):
     key = "daraz"
     name = "Daraz"
-    access_mode = "Daraz Open Platform API (authorized app required)"
-    required_env = ["DARAZ_APP_KEY", "DARAZ_APP_SECRET"]
+    access_mode = ("LIVE rating aggregates from the public daraz.pk storefront catalog; "
+                   "review TEXT via Daraz Open Platform API (authorized app required)")
+    required_env: list[str] = []   # catalog aggregates need no credentials
     docs_url = "https://open.daraz.com/"
-    notes = ("Daraz Open Platform grants review/product endpoints only to approved apps. "
-             "Requires seller/partner approval in Pakistan region.")
+    notes = ("Real product listings with average rating + review counts + prices "
+             "collected live. Written review text needs Open Platform approval - "
+             "configure DARAZ_APP_KEY/DARAZ_APP_SECRET to activate it.")
+    live_capability = "live"
 
     def search(self, product_name: str, description: str | None, max_items: int) -> AdapterResult:
-        if not self.has_credentials:
-            return self._needs_credentials()
-        # Real authorized call skeleton (endpoint per Daraz Open Platform docs).
+        from app.integrations.live_sources import fetch_daraz_catalog
+        listings, err = fetch_daraz_catalog(product_name,
+                                            settings.DARAZ_CATALOG_MAX_ITEMS)
+        if err and not listings:
+            # catalog unavailable: with creds we could still try Open Platform
+            if settings.DARAZ_APP_KEY and settings.DARAZ_APP_SECRET:
+                return self._search_open_platform(product_name, max_items)
+            return AdapterResult(self.key, AdapterStatus.BLOCKED, err)
+
+        result = AdapterResult(
+            self.key,
+            AdapterStatus.SUCCESS if listings else AdapterStatus.NO_RESULTS,
+            (f"Collected {len(listings)} real Daraz PK catalog listing(s) with "
+             "aggregate ratings/review counts from the public storefront JSON. "
+             "Written review text requires Daraz Open Platform credentials.")
+            if listings else "Daraz catalog returned no listings for this query.",
+            data_source="live",
+        )
+        result.aggregate_items = listings
+
+        # Authorized review-text path (activates automatically with creds)
+        if settings.DARAZ_APP_KEY and settings.DARAZ_APP_SECRET and listings:
+            try:
+                text_result = self._search_open_platform(product_name, max_items)
+                if text_result.items:
+                    result.items = text_result.items
+                    result.message += (f" | Open Platform: {len(text_result.items)} "
+                                       "review text(s) collected.")
+                else:
+                    result.message += f" | Open Platform: {text_result.message}"
+            except Exception as exc:  # never lose the aggregates over text failure
+                result.message += f" | Open Platform call failed: {exc}"[:200]
+        return result
+
+    def _search_open_platform(self, product_name: str, max_items: int) -> AdapterResult:
+        """Authorized Daraz Open Platform call (review text)."""
         app_key, secret = settings.DARAZ_APP_KEY, settings.DARAZ_APP_SECRET
         params = {
             "method": "aliexpress.product.reviews.get",  # replaced per official spec
@@ -97,7 +133,8 @@ class DarazAdapter(_OpenPlatformAdapter):
             for i, r in enumerate(payload.get("data", {}).get("reviews", []))
             if str(r.get("content", "")).strip()
         ]
-        return AdapterResult(self.key, AdapterStatus.SUCCESS, items=items[:max_items])
+        return AdapterResult(self.key, AdapterStatus.SUCCESS, items=items[:max_items],
+                             data_source="live")
 
 
 class AmazonAdapter(_OpenPlatformAdapter):
@@ -164,6 +201,7 @@ class TemuAdapter(_OpenPlatformAdapter):
     access_mode = "No authorized public review API available"
     required_env: list[str] = []
     docs_url = ""
+    live_capability = "not_available"
     notes = ("Temu does not offer a public review API; automated scraping violates its "
              "Terms of Service, so this integration is intentionally NOT implemented.")
 
@@ -178,6 +216,7 @@ class TemuAdapter(_OpenPlatformAdapter):
 class SheinAdapter(TemuAdapter):
     key = "shein"
     name = "SHEIN"
+    live_capability = "not_available"
     notes = ("SHEIN does not offer a public review API; automated scraping violates its "
              "Terms of Service, so this integration is intentionally NOT implemented.")
 

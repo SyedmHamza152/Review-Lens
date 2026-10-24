@@ -30,6 +30,7 @@ class PlatformInfo(BaseModel):
     name: str
     type: Literal["marketplace", "social"]
     status: PlatformStatusLiteral
+    live_capability: Literal["live", "requires_credentials", "not_available"] | None = None
     has_credentials: bool
     required_env: list[str]
     access_mode: str
@@ -41,7 +42,7 @@ class SearchRequest(BaseModel):
     product_name: str = Field(min_length=2, max_length=300)
     description: str | None = Field(default=None, max_length=2000)
     platforms: list[str] | None = None  # None / ["all"] -> all platforms
-    include_sample: bool = True
+    include_sample: bool = False  # live data only, by default; sample corpus is test-only
 
 
 class PlatformStatusOut(BaseModel):
@@ -148,6 +149,7 @@ class ReportResponse(BaseModel):
     comparison: list[ComparisonRowOut]
     languages: list[LanguageRowOut]
     trends: list[TrendPointOut]
+    marketplace_listings: list[dict] = []
     methodology: dict
 
 

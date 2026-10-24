@@ -28,7 +28,7 @@ log = logging.getLogger("orchestrator")
 
 
 def create_job(db: Session, product_name: str, description: str | None,
-               platforms: list[str] | None, include_sample: bool) -> SearchJob:
+               platforms: list[str] | None, include_sample: bool = False) -> SearchJob:
     from uuid import uuid4
     job_id = str(uuid4())
     keys = list(ADAPTERS.keys()) if not platforms or platforms == ["all"] else \
@@ -96,7 +96,8 @@ def _run(db: Session, job_id: str) -> None:
     if not job:
         return
     keys = json.loads(job.platforms_requested)
-    include_sample = job.include_sample and settings.ALLOW_SAMPLE_DATA
+    # Sample corpus is test/eval-only; the live app never mixes it in.
+    include_sample = bool(job.include_sample) and settings.ALLOW_SAMPLE_DATA
     ptokens = product_tokens(job.product_name, job.description)
 
     _set_job(db, job_id, status="running", stage="searching platforms", progress=5)
