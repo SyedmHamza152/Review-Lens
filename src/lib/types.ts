@@ -50,7 +50,7 @@ export interface JobStatus {
 }
 
 export interface Verdict {
-  score: number;
+  score: number | null;
   label: string;
   positive_pct: number;
   negative_pct: number;
@@ -58,6 +58,21 @@ export interface Verdict {
   mixed_pct: number;
   avg_confidence: number;
   methodology_note: string;
+  basis?: {
+    min_comments_required: number;
+    platforms_included: string[];
+    platforms_excluded: string[];
+    analyzed_comments_total: number;
+    analyzed_comments_for_verdict: number;
+  };
+  minimum_note?: string;
+}
+
+export interface BelowMinimumPlatform {
+  platform: string;
+  platform_name: string;
+  analyzed_comments: number;
+  message: string;
 }
 
 export interface DistributionItem {
@@ -82,10 +97,13 @@ export interface ComparisonRow {
   platform: string;
   platform_name: string;
   total: number;
-  positive_pct: number;
-  negative_pct: number;
-  neutral_pct: number;
-  mixed_pct: number;
+  meets_minimum: boolean;
+  analysis_processed: boolean;
+  below_minimum_message: string | null;
+  positive_pct: number | null;
+  negative_pct: number | null;
+  neutral_pct: number | null;
+  mixed_pct: number | null;
   avg_rating: number | null;
   low_sample: boolean;
   is_sample: boolean;
@@ -152,15 +170,19 @@ export interface Report {
   totals: {
     collected: number;
     analyzed: number;
+    analyzed_for_verdict?: number;
+    min_comments_required?: number;
     spam_filtered: number;
     low_relevance_excluded: number;
     platforms_with_data: number;
+    platforms_meeting_minimum?: number;
     platforms_requested: number;
     avg_confidence: number;
   };
   verdict: Verdict;
   distribution: DistributionItem[];
   summary: string;
+  below_minimum_platforms: BelowMinimumPlatform[];
   aspects: AspectStat[];
   advantages: PhraseCount[];
   complaints: PhraseCount[];
@@ -174,6 +196,8 @@ export interface Report {
     mixed_rule: string;
     min_sample_for_verdict: number;
     low_sample_platform_threshold: number;
+    min_comments_for_analysis?: number;
+    min_comments_rule?: string;
     confidence: string;
     disclaimers: string[];
   };

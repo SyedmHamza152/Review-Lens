@@ -1,20 +1,33 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Report } from "@/lib/types";
+import { pyFetch } from "@/lib/pyapi";
+import type { PaginatedReviews, Report } from "@/lib/types";
 import {
   AspectChart, LanguagePie, PlatformStackedBar, SentimentByLanguageBar,
   SentimentDonut, TrendLine, VolumeBar,
 } from "./charts";
-import { AlertTriangle, CheckCircle2, Gauge, Info, Languages, MessageSquare, ShieldCheck, Store, ThumbsDown, ThumbsUp, TrendingUp } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Gauge, Info, Languages, MessageSquare, ShieldCheck, Store, ThumbsDown, ThumbsUp, TrendingUp } from "lucide-react";
 
-export function OverviewTab({ report }: { report: Report }) {
+export function OverviewTab({ report, jobId }: { report: Report; jobId: string }) {
   const { verdict, totals, distribution, aspects, advantages, complaints } = report;
   const isSample = report.job.data_mode === "sample";
   const listings = report.marketplace_listings ?? [];
+  const belowMin = report.below_minimum_platforms ?? [];
+  const minReq = totals.min_comments_required ?? 50;
+
+  // real collected comments preview (transparency: comments visible up front)
+  const { data: preview } = useQuery({
+    queryKey: ["comment-preview", jobId],
+    queryFn: () => pyFetch<PaginatedReviews>(
+      `/api/jobs/${jobId}/reviews?page=1&page_size=8&sort=relevance&include_flagged=false`),
+    staleTime: 60_000,
+  });
 
   return (
     <div className="space-y-6">
@@ -39,12 +52,27 @@ export function OverviewTab({ report }: { report: Report }) {
         </div>
       )}
 
+      {/* 50-comment minimum notices — exact, honest per-platform status */}
+      {belowMin.length > 0 ? (
+        <div className="space-y-2">
+          {belowMin.map((b) => (
+            <div key={b.platform}
+              className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+              <p>
+                <b>{b.platform_name}:</b> {b.message}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {/* Summary cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           icon={<Gauge className="size-4" />}
           label="Overall sentiment score"
-          value={`${verdict.score}`}
+          value={verdict.score !== null ? `${verdict.score}` : "—"}
           sub={`/100 · ${verdict.label}`}
         />
         <StatCard
@@ -63,8 +91,8 @@ export function OverviewTab({ report }: { report: Report }) {
         <StatCard
           icon={<ShieldCheck className="size-4" />}
           label="Platforms analyzed"
-          value={`${totals.platforms_with_data}`}
-          sub={`of ${totals.platforms_requested} requested`}
+          value={`${totals.platforms_meeting_minimum ?? "–"}`}
+          sub={`met the ${minReq}-comment minimum · of ${totals.platforms_requested} requested`}
         />
       </div>
 
@@ -114,6 +142,57 @@ export function OverviewTab({ report }: { report: Report }) {
         </Card>
       ) : null}
 
+      {/* Real collected comments — always visible, straight from the platforms */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <MessageSquare className="size-4 text-primary" /> Real comments collected
+          </CardTitle>
+          <p className="text-xs font-normal text-muted-foreground">
+            A sample of the actual comments/reviews collected from platform APIs. Open the
+            Review explorer tab for the full searchable list with filters.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {!preview ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+            </div>
+          ) : preview.total === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No comments matched this product on the selected platforms — see the
+              per-platform notices above for the exact counts and reasons.
+            </p>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              {preview.items.map((r) => (
+                <div key={r.id} className="rounded-md border px-3 py-2">
+                  <p className="line-clamp-3 text-sm leading-snug" dir="auto">{r.text_original}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <Badge variant="outline" className="h-4.5 px-1 text-[9px] font-medium">
+                      {r.platform_name}
+                    </Badge>
+                    <span className={`rounded-full border px-1.5 text-[9px] font-semibold uppercase ${
+                      r.sentiment === "positive" ? "border-emerald-500/40 text-emerald-700"
+                      : r.sentiment === "negative" ? "border-red-500/40 text-red-600"
+                      : r.sentiment === "mixed" ? "border-amber-500/40 text-amber-700"
+                      : "border-slate-400/40 text-slate-600"}`}>
+                      {r.sentiment}
+                    </span>
+                    {r.source_url ? (
+                      <a href={r.source_url} target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-0.5 text-primary hover:underline">
+                        source <ExternalLink className="size-2.5" />
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Verdict + donut */}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -126,7 +205,7 @@ export function OverviewTab({ report }: { report: Report }) {
             <p className="text-lg font-semibold">
               {verdict.label}{" "}
               <span className="font-normal text-muted-foreground">
-                · score {verdict.score}/100
+                {verdict.score !== null ? `· score ${verdict.score}/100` : "· no score (insufficient data)"}
               </span>
             </p>
             <div className="space-y-2">
@@ -259,15 +338,23 @@ export function OverviewTab({ report }: { report: Report }) {
           </CardHeader>
           <CardContent>
             <PlatformStackedBar
-              rows={report.comparison.map((c) => ({
-                platform_name: c.platform_name + (c.low_sample ? "*" : ""),
-                positive_pct: c.positive_pct,
-                negative_pct: c.negative_pct,
-                neutral_pct: c.neutral_pct,
-                mixed_pct: c.mixed_pct,
-              }))}
+              rows={report.comparison
+                .filter((c) => c.analysis_processed)
+                .map((c) => ({
+                  platform_name: c.platform_name,
+                  positive_pct: c.positive_pct ?? 0,
+                  negative_pct: c.negative_pct ?? 0,
+                  neutral_pct: c.neutral_pct ?? 0,
+                  mixed_pct: c.mixed_pct ?? 0,
+                }))}
               height={300}
             />
+            {report.comparison.some((c) => !c.analysis_processed) ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Platforms below the {minReq}-comment minimum are excluded from this chart
+                (see notices above).
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 

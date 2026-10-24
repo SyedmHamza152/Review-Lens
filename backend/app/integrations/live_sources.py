@@ -6,9 +6,12 @@ Connectivity matrix verified from this deployment (2026-10, curl probes):
 |---------------------|--------------------------------------------------|-----------------|
 | Reddit archive      | arctic-shift.photon-reddit.com/api/*             | LIVE (200)      |
 | Hacker News         | hn.algolia.com/api/v1/*                          | LIVE (200)      |
+| YouTube comments    | www.youtube.com/youtubei/v1 search + next        | LIVE (200)      |
 | Daraz PK storefront | www.daraz.pk/catalog/?q=...&ajax=true            | LIVE (200)      |
+| Daraz review TEXT   | acs-m.daraz.pk mtop gateway / getReviewList      | IP-blocked (RGV587 cloud_ip_bl) |
 | reddit.com JSON     | www.reddit.com/*.json (unauthenticated)          | 403 datacenter  |
-| YouTube / X / eBay  | googleapis / api.x.com / api.ebay.com            | reachable, needs key |
+| X / eBay            | api.x.com / api.ebay.com                         | reachable, needs key |
+| YouTube Data API v3 | googleapis.com (official, when key configured)   | reachable, needs key |
 | Daraz Open Platform | open.daraz.com                                   | needs app key   |
 
 Everything collected here comes VERBATIM from the upstream platform APIs.
@@ -395,3 +398,327 @@ def fetch_daraz_catalog(product_name: str, max_items: int) -> tuple[list[dict], 
 
 def collect_daraz_catalog(product_name: str, max_items: int) -> tuple[list[dict], str]:
     return fetch_daraz_catalog(product_name, max_items)
+
+
+def fetch_daraz_reviews(listings: list[dict], max_items: int) -> tuple[list[ReviewItem], str]:
+    """Attempt REAL written reviews for Daraz listings via the PDP review API.
+
+    Verified deployment reality: the storefront review endpoint
+    (`/pdp/review/getReviewList`) currently routes to the SPA error page and
+    the mtop gateway (`acs-m.daraz.pk`) answers RGV587_ERROR (cloud_ip_bl =
+    datacenter IP blocklist), so text reviews are NOT obtainable from this
+    deployment without Daraz Open Platform credentials. The attempt is kept
+    so access resumes automatically if Daraz changes this - and the honest
+    note travels back to the adapter either way.
+    """
+    if not listings:
+        return [], "no catalog listings to look up"
+    note = ""
+    items: list[ReviewItem] = []
+    probe = listings[:3]
+    for l in probe:
+        item_id = str(l.get("external_id") or "")
+        if not item_id.isdigit():
+            continue
+        try:
+            resp = requests.get(
+                "https://www.daraz.pk/pdp/review/getReviewList/",
+                params={"itemId": item_id, "pageSize": 20, "filter": 0,
+                        "sort": 0, "pageNo": 1},
+                headers=DARAZ_UA_HEADERS,
+                timeout=settings.REQUEST_TIMEOUT_SECONDS + 8,
+            )
+            ctype = resp.headers.get("content-type", "")
+            if resp.status_code != 200 or "json" not in ctype:
+                note = ("Daraz written review text is not accessible from this "
+                        "deployment: the storefront review API is protected by "
+                        "Alibaba anti-bot (datacenter IP blocklist) and the review "
+                        "endpoint returns an error page instead of review data.")
+                break
+            payload = resp.json()
+            model = payload.get("model") or {}
+            for r in model.get("items") or []:
+                text = str(r.get("reviewContent") or "").strip()
+                if not text:
+                    continue
+                when = None
+                raw_time = r.get("reviewTime")
+                if raw_time:
+                    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%d-%m-%Y"):
+                        try:
+                            when = datetime.strptime(str(raw_time)[:16], fmt)
+                            break
+                        except ValueError:
+                            continue
+                items.append(ReviewItem(
+                    external_id=f"daz_{r.get('reviewId', len(items))}",
+                    text=text[:1500],
+                    rating=r.get("ratingStar"),
+                    review_date=when,
+                    author=r.get("buyerName"),
+                    variant=str(r.get("skuInfo"))[:160] if r.get("skuInfo") else None,
+                    source_url=l.get("url"),
+                    relevance_hint=0.85,  # product-page reviews are product-scoped
+                ))
+                if len(items) >= max_items:
+                    break
+            if items:
+                note = ""
+                break
+        except (requests.RequestException, ValueError) as exc:
+            note = f"Daraz review endpoint unreachable: {exc}"[:200]
+            break
+    return items[:max_items], note
+
+
+# ---------------------------------------------------------------- youtube innertube
+# The public YouTube web client API (InnerTube) is the same endpoint every
+# YouTube browser session uses (search + comments); it requires no user
+# credentials and returns REAL comments verbatim. When YOUTUBE_API_KEY is
+# configured, the official YouTube Data API v3 is used instead (YouTubeAdapter).
+_INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"  # public web-client key
+_INNERTUBE_CTX = {"client": {"clientName": "WEB", "clientVersion": "2.20241001.00.00",
+                             "hl": "en", "gl": "PK"}}
+_RELATIVE_AGO = re.compile(
+    r"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago", re.I)
+
+
+def _parse_relative_time(text: str | None):
+    """Best-effort parse of YouTube relative timestamps ('7 months ago')."""
+    if not text:
+        return None
+    m = _RELATIVE_AGO.search(text)
+    if not m:
+        return None
+    n, unit = int(m.group(1)), m.group(2).lower()
+    deltas = {"second": timedelta(seconds=n), "minute": timedelta(minutes=n),
+              "hour": timedelta(hours=n), "day": timedelta(days=n),
+              "week": timedelta(weeks=n), "month": timedelta(days=30 * n),
+              "year": timedelta(days=365 * n)}
+    return datetime.now(timezone.utc) - deltas[unit]
+
+
+class YouTubeInnertubeClient:
+    """Real YouTube comments via the public web client API (no credentials).
+
+    Rate-limited politely (min interval between calls), retries transient
+    failures with exponential backoff, and degrades gracefully: a video with
+    comments disabled is skipped, a network error aborts with what was
+    collected so far.
+    """
+
+    SEARCH_URL = f"https://www.youtube.com/youtubei/v1/search?key={_INNERTUBE_KEY}&prettyPrint=false"
+    NEXT_URL = f"https://www.youtube.com/youtubei/v1/next?key={_INNERTUBE_KEY}&prettyPrint=false"
+
+    def __init__(self) -> None:
+        self._last_call = 0.0
+        self.calls = 0
+
+    def _post(self, url: str, payload: dict) -> dict | None:
+        wait = settings.INNERTUBE_MIN_INTERVAL_SECONDS - (time.time() - self._last_call)
+        if wait > 0:
+            time.sleep(wait)
+        backoff = 1.5
+        for attempt in range(3):
+            self.calls += 1
+            self._last_call = time.time()
+            try:
+                resp = requests.post(
+                    url, json=payload, timeout=settings.REQUEST_TIMEOUT_SECONDS + 10,
+                    headers={"User-Agent": UA,
+                             "Content-Type": "application/json",
+                             "Accept-Language": "en-US,en;q=0.9",
+                             "Origin": "https://www.youtube.com",
+                             "Referer": "https://www.youtube.com/"},
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+                if resp.status_code in (429, 500, 502, 503) and attempt < 2:
+                    time.sleep(backoff)
+                    backoff *= 2
+                    continue
+                log.warning("innertube HTTP %s on %s", resp.status_code, url.split("/v1/")[1][:20])
+                return None
+            except requests.RequestException as exc:
+                log.warning("innertube network error: %s", exc)
+                if attempt < 2:
+                    time.sleep(backoff)
+                    backoff *= 2
+        return None
+
+    @staticmethod
+    def _walk(node, key: str):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == key:
+                    yield v
+                yield from YouTubeInnertubeClient._walk(v, key)
+        elif isinstance(node, list):
+            for it in node:
+                yield from YouTubeInnertubeClient._walk(it, key)
+
+    def search_videos(self, query: str, limit: int) -> list[dict]:
+        payload = {"context": _INNERTUBE_CTX, "query": query}
+        data = self._post(self.SEARCH_URL, payload)
+        if not data:
+            return []
+        videos: list[dict] = []
+        seen: set[str] = set()
+        for vr in self._walk(data, "videoRenderer"):
+            vid = vr.get("videoId")
+            if not vid or vid in seen:
+                continue
+            seen.add(vid)
+            title = ""
+            runs = ((vr.get("title") or {}).get("runs")) or []
+            title = runs[0].get("text", "") if runs else ""
+            owner_runs = ((vr.get("ownerText") or {}).get("runs")) or []
+            videos.append({
+                "video_id": vid,
+                "title": title[:300],
+                "channel": owner_runs[0].get("text", "")[:120] if owner_runs else None,
+                "views_text": (vr.get("viewCountText") or {}).get("simpleText"),
+                "published_text": (vr.get("publishedTimeText") or {}).get("simpleText"),
+            })
+            if len(videos) >= limit:
+                break
+        return videos
+
+    def _comments_continuation(self, data: dict) -> str | None:
+        """Find the comments-section continuation token in a /next response."""
+        for ep in data.get("engagementPanels", []):
+            panel = ep.get("engagementPanelSectionListRenderer", {})
+            if panel.get("panelIdentifier") != "engagement-panel-comments-section":
+                continue
+
+            def find_cont(node):
+                if isinstance(node, dict):
+                    cir = node.get("continuationItemRenderer")
+                    if cir:
+                        tok = ((cir.get("continuationEndpoint") or {})
+                               .get("continuationCommand", {}) or {}).get("token")
+                        if tok:
+                            return tok
+                    for v in node.values():
+                        found = find_cont(v)
+                        if found:
+                            return found
+                elif isinstance(node, list):
+                    for it in node:
+                        found = find_cont(it)
+                        if found:
+                            return found
+                return None
+
+            token = find_cont(panel.get("content", {}))
+            if token:
+                return token
+        return None
+
+    def fetch_comments(self, video_id: str, want: int,
+                       seen_ids: set[str] | None = None) -> tuple[list[dict], int]:
+        """Collect real comments (top-level) for one video. Returns (comments, remaining_want)."""
+        seen = seen_ids if seen_ids is not None else set()
+        out: list[dict] = []
+        token = None
+        first = self._post(self.NEXT_URL, {"context": _INNERTUBE_CTX, "videoId": video_id})
+        if not first:
+            return out, want
+        token = self._comments_continuation(first)
+        pages = 0
+        while token and pages < settings.YOUTUBE_MAX_PAGES_PER_VIDEO and len(out) < want:
+            data = self._post(self.NEXT_URL, {"context": _INNERTUBE_CTX, "continuation": token})
+            if not data:
+                break
+            pages += 1
+            before = len(out)
+            # New format: commentEntityPayload mutations (author, text, likes, time)
+            for mut in ((data.get("frameworkUpdates") or {})
+                        .get("entityBatchUpdate", {}) or {}).get("mutations", []):
+                p = (mut.get("payload") or {}).get("commentEntityPayload")
+                if not p:
+                    continue
+                cid = ((p.get("properties") or {}).get("commentId")) or mut.get("entityKey", "")
+                if not cid or cid in seen:
+                    continue
+                text = (((p.get("properties") or {}).get("content") or {})
+                        .get("content") or "").strip()
+                if len(text) < 2:
+                    continue
+                seen.add(cid)
+                author = ((p.get("author") or {}).get("displayName")) or None
+                when = _parse_relative_time((p.get("properties") or {}).get("publishedTime"))
+                likes_raw = ((p.get("toolbar") or {}).get("likeCountNotliked")) or ""
+                try:
+                    likes = int(str(likes_raw).replace(",", "")) if likes_raw else None
+                except ValueError:
+                    likes = None
+                out.append({"id": f"yt_{cid[:200]}", "text": text, "author": author,
+                            "likes": likes, "date": when, "video_id": video_id})
+            # next page token: last continuationItemRenderer in the append action
+            next_token = None
+            for ep in data.get("onResponseReceivedEndpoints", []):
+                action = ep.get("appendContinuationItemsAction") or \
+                    ep.get("reloadContinuationItemsCommand") or {}
+                items = action.get("continuationItems") or []
+                if items:
+                    cir = items[-1].get("continuationItemRenderer") or {}
+                    tok = ((cir.get("continuationEndpoint") or {})
+                           .get("continuationCommand", {}) or {}).get("token")
+                    if tok:
+                        next_token = tok
+            token = next_token
+            if len(out) == before:  # page yielded nothing new
+                break
+        return out, max(0, want - len(out))
+
+
+def collect_youtube(product_name: str, description: str | None,
+                    max_items: int) -> AdapterResult:
+    """Collect REAL YouTube comments for the product via the public web API.
+
+    Searches product review videos, then harvests top-level comments across
+    the top videos until max_items is reached. No synthetic content.
+    """
+    if not (product_name or "").strip():
+        return AdapterResult("youtube", AdapterStatus.NO_RESULTS, "Empty product name.")
+    client = YouTubeInnertubeClient()
+    query = f"{product_name} review" if len(product_name) < 25 else product_name
+    videos = client.search_videos(query, settings.YOUTUBE_MAX_VIDEOS)
+    if not videos:
+        return AdapterResult(
+            "youtube", AdapterStatus.BLOCKED,
+            "YouTube web API unreachable from this deployment (no videos returned).")
+
+    items: list[ReviewItem] = []
+    seen_ids: set[str] = set()
+    per_video = settings.YOUTUBE_COMMENTS_PER_VIDEO
+    for v in videos:
+        if len(items) >= max_items:
+            break
+        comments, _ = client.fetch_comments(v["video_id"],
+                                            min(per_video, max_items - len(items)), seen_ids)
+        for c in comments:
+            if len(items) >= max_items:
+                break
+            url = f"https://www.youtube.com/watch?v={v['video_id']}"
+            items.append(ReviewItem(
+                external_id=c["id"],
+                text=c["text"][:1500],
+                review_date=c.get("date"),
+                author=c.get("author"),
+                source_url=url,
+                # Comments were harvested from videos retrieved by a
+                # product-scoped search ("{product} review"), so the product
+                # context comes from the video level - the same rationale as
+                # marketplace product-page items. Token-level relevance scoring
+                # would wrongly discard e.g. "I love GM brava 808" under a
+                # cricket-bat review video. Spam/promotional filtering and all
+                # other pipeline quality gates still apply downstream.
+                relevance_hint=0.6,
+            ))
+
+    status = AdapterStatus.SUCCESS if items else AdapterStatus.NO_RESULTS
+    msg = (f"Collected {len(items)} real YouTube comments across {len(videos)} "
+           f"review video(s) for '{query}' via the public YouTube web API.")
+    return AdapterResult("youtube", status, msg, items=items[:max_items], data_source="live")

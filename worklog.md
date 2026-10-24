@@ -49,3 +49,24 @@ Stage Summary:
 - 59 pytest cases green (incl. 7 new live-source tests w/ mocked HTTP); sample corpus reachable only from tests
 - Key lesson: Arctic-Shift text-search 422s under bursts - always use light fetch+local filter as primary; requests params must send daraz ajax as string "true"
 - Real job id for reference: dbcc5fd9-0a38-4ea4-adc8-ce004acdf936 (iPhone 15, live)
+
+---
+Task ID: 3
+Agent: main (Z.ai)
+Task: Show REAL comments + enforce 50-comment minimum + add YouTube API (user: "it does not show the comments... get min 50 comments... also fetch the Youtube API as well")
+
+Work Log:
+- Probed Daraz review-text access with agent-browser network capture + JS-bundle grep: PDP uses mtop.global.detail.web.getDetailInfo on acs-m.daraz.pk -> RGV587_ERROR cloud_ip_bl (Alibaba datacenter-IP blocklist); storefront /pdp/review/getReviewList routes to SPA error page even with cookies/referer/trailing-slash. Conclusion: Daraz review TEXT unobtainable from this deployment (code-level fix impossible; Open Platform creds unlock it)
+- Probed YouTube: InnerTube (public WEB client key, no credentials) search + comments BOTH live from sandbox; commentEntityPayload parsing + continuation pagination verified; googleapis reachable for official Data API v3
+- live_sources.py: added YouTubeInnertubeClient (paced 1s, backoff, engagement-panel comment-token extraction, frameworkUpdates commentEntityPayload parsing, continuation pages, relative-time parser), collect_youtube (search "{product} review" -> up to 10 videos x 40 comments, video-scoped relevance_hint=0.6 - same rationale as marketplace product-page items), fetch_daraz_reviews (self-healing PDP attempt -> honest block note)
+- YouTubeAdapter now LIVE without key (InnerTube) + official paginated Data API v3 path auto-selected when YOUTUBE_API_KEY set; DarazAdapter attempts review text then falls back to aggregates + honest note
+- 50-comment minimum (MIN_COMMENTS_FOR_ANALYSIS=50): aggregation computes per-platform qualifying counts, below_minimum_platforms with exact message "Only N real comments found on X - below the 50-comment minimum, so sentiment analysis cannot be processed for this platform...", status rows annotated, verdict/aspects/languages/trends/ranking computed from qualifying platforms ONLY, verdict.basis + minimum_note + score null when nothing qualifies; comparison rows carry meets_minimum/analysis_processed/below_minimum_message with null percentages
+- Frontend: types extended (Verdict.score nullable, basis, BelowMinimumPlatform, totals fields); overview shows amber per-platform banners + "Real comments collected" live preview card (fetches /reviews sort=relevance) + platforms-meeting-minimum stat + verdict null-safe; comparison tab: 50-min notice, "below 50 min" badge with tooltip message, em-dash percentages, chart filtered to processed rows; explorer gets below-minimum banners; dashboard header shows verdict basis; tsc clean
+- Tests: +5 (InnerTube payload parsing e2e via mocked _post, relative-time parser, daraz blocked-note honesty, min-50 policy on real pipeline+aggregation, platforms listing youtube=live); test_full_search_flow updated for the honest insufficient-data branch; 63 passed
+- E2E REAL (job fbbeff10-004a-45e4-89ea-de95f97f95c0, "cricket bat" + daraz + youtube): YouTube 120 real comments collected -> 116 analyzed (4 spam) >= 50 -> verdict Mixed Feedback 67/100, aspects (price 6, performance 4...), languages (113 en, 2 roman_urdu, 1 mixed), 11-week trends; Daraz: 40 live listings (avg 4.82, 2111 ratings) + 0 text comments -> exact below-minimum message; UI verified in browser (LIVE DATA badge, banners, real-comment preview, comparison badges, explorer rows w/ sentiment+language+source links); AI chat grounded (cites real YouTube comments, discloses sample limits)
+
+Stage Summary:
+- Comments now SHOW: overview preview card + explorer list real verbatim comments with platform/sentiment/language/date/source links
+- Live platforms: YouTube (NEW, no key needed), Reddit archive, Hacker News, Daraz catalog aggregates; 9 others honest as needs_credentials/unsupported
+- 50-comment minimum enforced per user spec: >=50 -> full analysis; <50 -> exact "comments less than 50 on that platform" message, raw comments still viewable, no fabricated analysis
+- Daraz review text remains impossible from datacenter IPs (Alibaba anti-bot) - Open Platform creds (DARAZ_APP_KEY/SECRET) or non-datacenter deployment unlock it; message states this honestly

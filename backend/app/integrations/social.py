@@ -7,7 +7,8 @@ Verified data-access situation (re-verified from this deployment, 2026-10):
 | Reddit    | LIVE with no credentials via the public Arctic-Shift Reddit archive API.     |
 |           | Official OAuth API used automatically when client id/secret are configured.  |
 | HN        | LIVE with no credentials via the public HN Algolia search API.               |
-| YouTube   | YouTube Data API v3 with API key: search + commentThreads (public comments). |
+| YouTube   | LIVE with no credentials via the public YouTube web client API (search +     |
+|           | comments). Official Data API v3 used automatically when YOUTUBE_API_KEY set. |
 | X         | X API v2 recent search (Bearer token); comments retrieval is a paid tier.    |
 | Facebook  | Graph API Pages/Search is heavily restricted; keyword search of public posts |
 |           | is not generally available. Requires App Review.                             |
@@ -110,18 +111,30 @@ class RedditAdapter(_SocialAdapter):
 class YouTubeAdapter(_SocialAdapter):
     key = "youtube"
     name = "YouTube"
-    access_mode = "YouTube Data API v3 (API key) - search + comment threads"
-    required_env = ["YOUTUBE_API_KEY"]
+    access_mode = ("LIVE via the public YouTube web client API (no credentials); "
+                   "official YouTube Data API v3 (search + commentThreads) is used "
+                   "automatically when YOUTUBE_API_KEY is configured")
+    required_env: list[str] = []   # official key optional - InnerTube path needs none
     docs_url = "https://developers.google.com/youtube/v3"
-    notes = "Public video search + commentThreads; quotas apply (10k units/day default)."
+    notes = ("Real comments from product review videos. Credential-free live path "
+             "uses the same public web endpoint a YouTube browser session uses; "
+             "quotas apply only on the official API path (10k units/day default).")
+    live_capability = "live"
 
     def search(self, product_name: str, description: str | None, max_items: int) -> AdapterResult:
-        if not self.has_credentials:
-            return self._needs_credentials()
+        if settings.YOUTUBE_API_KEY:
+            return self._search_official(product_name, max_items)
+        # LIVE credential-free path: public YouTube web client API (real comments)
+        from app.integrations.live_sources import collect_youtube
+        return collect_youtube(product_name, description, max_items)
+
+    def _search_official(self, product_name: str, max_items: int) -> AdapterResult:
+        """Official YouTube Data API v3 path (used when YOUTUBE_API_KEY is set)."""
         search = requests.get(
             "https://www.googleapis.com/youtube/v3/search",
-            params={"part": "snippet", "q": product_name, "type": "video",
-                    "maxResults": 10, "order": "relevance",
+            params={"part": "snippet", "q": f"{product_name} review", "type": "video",
+                    "maxResults": min(settings.YOUTUBE_MAX_VIDEOS, 25),
+                    "order": "relevance",
                     "key": settings.YOUTUBE_API_KEY},
             timeout=TIMEOUT,
         )
@@ -132,30 +145,36 @@ class YouTubeAdapter(_SocialAdapter):
         video_ids = [it["id"]["videoId"] for it in search.json().get("items", []) if "videoId" in it.get("id", {})]
         items: list[ReviewItem] = []
         for vid in video_ids:
-            thread = requests.get(
-                "https://www.googleapis.com/youtube/v3/commentThreads",
-                params={"part": "snippet", "videoId": vid, "maxResults": 30,
-                        "textFormat": "plainText", "key": settings.YOUTUBE_API_KEY},
-                timeout=TIMEOUT,
-            )
-            if thread.status_code != 200:
-                continue  # comments disabled for this video
-            for it in thread.json().get("items", []):
-                snip = it["snippet"]["topLevelComment"]["snippet"]
-                text = (snip.get("textDisplay") or "").strip()
-                if not text:
-                    continue
-                items.append(ReviewItem(
-                    external_id=it["snippet"]["topLevelComment"]["id"],
-                    text=text[:1500],
-                    review_date=datetime.fromisoformat(snip["publishedAt"].replace("Z", "+00:00")),
-                    author=snip.get("authorDisplayName"),
-                    source_url=f"https://www.youtube.com/watch?v={vid}&lc={it['snippet']['topLevelComment']['id']}",
-                ))
-            if len(items) >= max_items:
-                break
+            page_token = ""
+            while len(items) < max_items:
+                params = {"part": "snippet", "videoId": vid, "maxResults": 50,
+                          "textFormat": "plainText", "key": settings.YOUTUBE_API_KEY}
+                if page_token:
+                    params["pageToken"] = page_token
+                thread = requests.get(
+                    "https://www.googleapis.com/youtube/v3/commentThreads",
+                    params=params, timeout=TIMEOUT,
+                )
+                if thread.status_code != 200:
+                    break  # comments disabled for this video
+                payload = thread.json()
+                for it in payload.get("items", []):
+                    snip = it["snippet"]["topLevelComment"]["snippet"]
+                    text = (snip.get("textDisplay") or "").strip()
+                    if not text:
+                        continue
+                    items.append(ReviewItem(
+                        external_id=it["snippet"]["topLevelComment"]["id"],
+                        text=text[:1500],
+                        review_date=datetime.fromisoformat(snip["publishedAt"].replace("Z", "+00:00")),
+                        author=snip.get("authorDisplayName"),
+                        source_url=f"https://www.youtube.com/watch?v={vid}&lc={it['snippet']['topLevelComment']['id']}",
+                    ))
+                page_token = payload.get("nextPageToken", "")
+                if not page_token:
+                    break
         status = AdapterStatus.SUCCESS if items else AdapterStatus.NO_RESULTS
-        return AdapterResult(self.key, status, items=items[:max_items])
+        return AdapterResult(self.key, status, items=items[:max_items], data_source="live")
 
 
 class XAdapter(_SocialAdapter):

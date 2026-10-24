@@ -45,12 +45,22 @@ def test_full_search_flow(client):
 
     rep = client.get(f"/api/jobs/{job_id}/report").json()
     assert rep["totals"]["analyzed"] > 0
+    # 50-comment minimum: verdict only from platforms meeting the minimum;
+    # below-minimum platforms must carry the exact honest message.
+    qualifying = [c for c in rep["comparison"] if c["analysis_processed"]]
+    if qualifying:
+        assert abs(sum(d["pct"] for d in rep["distribution"]) - 100) < 1.5
+        assert rep["languages"], "language breakdown missing"
+    else:
+        assert rep["verdict"]["label"] == "Insufficient Data"
+        assert rep["below_minimum_platforms"], \
+            "below-minimum platforms must be listed with the exact message"
+        assert all("50-comment minimum" in b["message"]
+                   for b in rep["below_minimum_platforms"])
     assert rep["verdict"]["label"] in {
         "Generally Positive", "Mostly Positive with Some Concerns", "Mixed Feedback",
         "Mostly Negative with Some Positives", "Generally Negative", "Insufficient Data",
     }
-    assert abs(sum(d["pct"] for d in rep["distribution"]) - 100) < 1.5
-    assert rep["languages"], "language breakdown missing"
     assert rep["summary"].strip()
 
 

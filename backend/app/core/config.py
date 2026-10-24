@@ -58,6 +58,19 @@ class Settings(BaseSettings):
 
     DARAZ_CATALOG_MAX_ITEMS: int = 40
 
+    # --- 50-comment minimum (product requirement) ---
+    # A platform with fewer than this many REAL comments cannot support
+    # reliable sentiment analysis; the report states that explicitly instead
+    # of pretending. Platforms below the minimum are shown in the Comments
+    # tab but excluded from verdict/aspects/comparison aggregation.
+    MIN_COMMENTS_FOR_ANALYSIS: int = 50
+
+    # --- YouTube live collection (public web API; official v3 when key set) ---
+    YOUTUBE_MAX_VIDEOS: int = 10
+    YOUTUBE_COMMENTS_PER_VIDEO: int = 40
+    YOUTUBE_MAX_PAGES_PER_VIDEO: int = 6
+    INNERTUBE_MIN_INTERVAL_SECONDS: float = 1.0
+
     # --- Optional transformer second-opinion engine (off in sandbox) ---
     TRANSFORMER_SENTIMENT_ENABLED: bool = False
     TRANSFORMER_SENTIMENT_MODEL: str = "cardiffnlp/twitter-xlm-roberta-base-sentiment"

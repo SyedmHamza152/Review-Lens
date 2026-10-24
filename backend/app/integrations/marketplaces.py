@@ -6,8 +6,9 @@ Verified data-access situation (re-verified from this deployment, 2026-10):
 |------------|------------------------------------------------------------------------------|
 | Daraz      | LIVE rating AGGREGATES from the public storefront catalog JSON (avg rating,  |
 |            | review count, price, seller - the same data daraz.pk search renders). Review |
-|            | TEXT requires the Daraz Open Platform API (App Key + Secret, partner         |
-|            | approval); the authorized call is implemented and activates with creds.      |
+|            | TEXT is currently blocked for datacenter deployments by Alibaba anti-bot     |
+|            | (mtop RGV587 / cloud_ip_bl); an authorized Daraz Open Platform app           |
+|            | (DARAZ_APP_KEY/DARAZ_APP_SECRET) unlocks it - implemented, activates w/ creds.|
 | Amazon     | Product Advertising API 5 (Associate tag + keys) exposes ratings/review      |
 |            | COUNTS; full review text retrieval is restricted by policy.                  |
 | Alibaba    | Alibaba Open Platform (App Key). B2B trade data; buyer reviews limited.      |
@@ -88,6 +89,21 @@ class DarazAdapter(_OpenPlatformAdapter):
             data_source="live",
         )
         result.aggregate_items = listings
+
+        if not listings:
+            return result
+
+        # Attempt written review text for the top listings (self-healing:
+        # currently blocked by Alibaba anti-bot for datacenter IPs - reported
+        # honestly; resumes automatically if Daraz reopens the endpoint).
+        from app.integrations.live_sources import fetch_daraz_reviews
+        review_items, note = fetch_daraz_reviews(listings, max_items)
+        if review_items:
+            result.items = review_items
+            result.message += (f" | {len(review_items)} written review(s) collected "
+                               "from the product pages.")
+        elif note:
+            result.message += f" | Written reviews: {note}"
 
         # Authorized review-text path (activates automatically with creds)
         if settings.DARAZ_APP_KEY and settings.DARAZ_APP_SECRET and listings:

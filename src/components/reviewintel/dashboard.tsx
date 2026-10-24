@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { exportUrl, pyFetch } from "@/lib/pyapi";
-import type { JobStatus, Report } from "@/lib/types";
+import type { BelowMinimumPlatform, JobStatus, Report } from "@/lib/types";
 import { AssistantTab } from "./assistant-tab";
 import { ComparisonTab } from "./comparison-tab";
 import { ExplorerTab } from "./explorer-tab";
@@ -78,7 +78,7 @@ export function DashboardView({ jobId }: { jobId: string }) {
                     ? "border-amber-500/40 text-amber-600"
                     : "border-emerald-500/40 text-emerald-700"}
             >
-              {v.label} · {v.score}/100
+              {v.label} · {v.score !== null ? `${v.score}/100` : "no score"}
             </Badge>
             {isSample ? (
               <Badge variant="outline" className="border-amber-500/40 text-amber-700">
@@ -95,7 +95,8 @@ export function DashboardView({ jobId }: { jobId: string }) {
             )}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {report.totals.analyzed} comments analyzed across {report.totals.platforms_with_data} platform(s) ·
+            {report.totals.analyzed} comments analyzed · {report.totals.analyzed_for_verdict ?? report.totals.analyzed} counted
+            toward the verdict (platforms meeting the {report.totals.min_comments_required ?? 50}-comment minimum) ·
             searched {new Date(report.job.created_at).toLocaleString()}
           </p>
         </div>
@@ -127,13 +128,13 @@ export function DashboardView({ jobId }: { jobId: string }) {
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
-          <OverviewTab report={report} />
+          <OverviewTab report={report} jobId={jobId} />
         </TabsContent>
         <TabsContent value="comparison" className="mt-4">
           <ComparisonTab report={report} />
         </TabsContent>
         <TabsContent value="explorer" className="mt-4">
-          <ExplorerTab jobId={jobId} />
+          <ExplorerTab jobId={jobId} belowMinimum={report.below_minimum_platforms} />
         </TabsContent>
         <TabsContent value="assistant" className="mt-4">
           <AssistantTab jobId={jobId} report={report} />

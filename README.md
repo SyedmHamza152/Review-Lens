@@ -102,15 +102,27 @@ Verified live from this deployment (2026-10):
 
 | Platform | Access mode | Status without credentials |
 |---|---|---|
+| YouTube | **LIVE comments**: public YouTube web client API (InnerTube — the same search + comments endpoints a browser session uses); official Data API v3 used automatically when `YOUTUBE_API_KEY` is set | `success` (live) |
 | Reddit | **LIVE**: public Arctic-Shift archive API (posts + comments, incl. Pakistani subreddits); official OAuth API used automatically when creds configured | `success` (live) |
 | Hacker News | **LIVE**: public HN Algolia search API (stories + comments) | `success` (live) |
-| Daraz | **LIVE rating aggregates**: public storefront catalog JSON (avg rating, review counts, prices, sellers). Written review TEXT via Open Platform API | `success` (aggregates live); review text `needs_credentials` |
+| Daraz | **LIVE rating aggregates**: public storefront catalog JSON (avg rating, review counts, prices, sellers). Written review TEXT: currently blocked for datacenter deployments by Alibaba anti-bot (mtop `RGV587` / `cloud_ip_bl`); an approved Open Platform app (`DARAZ_APP_KEY`/`DARAZ_APP_SECRET`) unlocks it | `success` (aggregates live); review text blocked/`needs_credentials` |
 | Amazon | PA-API 5 (ratings/review counts; review text restricted by policy) | `needs_credentials` |
 | Alibaba / AliExpress | Open Platform APIs | `needs_credentials` |
-| YouTube | Data API v3 (search + commentThreads) — reachable, key required | `needs_credentials` |
 | X | API v2 recent search (paid tier for reads) | `needs_credentials` |
 | Facebook / Instagram | Graph API (search retired / App Review) | `not_available` |
 | Temu / SHEIN | **No public API; ToS forbids scraping** | `unsupported` (by design) |
+
+### 50-comment minimum rule
+
+A platform needs **at least 50 real comments** (`MIN_COMMENTS_FOR_ANALYSIS`)
+before its sentiment results are processed into the verdict. Platforms below
+the minimum are never padded or simulated: the report displays the exact
+message — *"Only N real comments found on {platform} — below the 50-comment
+minimum, so sentiment analysis cannot be processed for this platform"* — and
+the raw comments remain viewable in the Comments tab / Review explorer. The
+verdict, aspects, language split, trends and platform ranking are computed
+from qualifying platforms only; if no platform qualifies the verdict is
+**Insufficient Data** with per-platform counts stated.
 
 - The synthetic sample corpus is **test/eval only** — it can no longer appear in
   app reports. `POST /api/search` defaults to `include_sample=false` and the UI

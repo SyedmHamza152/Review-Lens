@@ -186,8 +186,178 @@ def test_platform_listing_metadata():
     assert listing["reddit"]["live_capability"] == "live"
     assert listing["hackernews"]["live_capability"] == "live"
     assert listing["daraz"]["live_capability"] == "live"
-    assert listing["youtube"]["live_capability"] == "requires_credentials"
+    assert listing["youtube"]["live_capability"] == "live"
     assert listing["temu"]["live_capability"] == "not_available"
     assert listing["temu"]["status"] == "unsupported"
     # live sources sort first
     assert platform_listing()[0]["live_capability"] == "live"
+
+
+# ---------------------------------------------------------------- youtube
+
+def test_parse_relative_time():
+    from datetime import datetime, timezone
+    dt = ls._parse_relative_time("7 months ago (edited)")
+    assert dt is not None and dt.tzinfo is not None
+    assert (datetime.now(timezone.utc) - dt).days >= 200
+    assert ls._parse_relative_time("just now") is None
+
+
+def _yt_search_payload():
+    return {"contents": [{"twoColumnSearchResultsRenderer": {"primaryContents": {
+        "sectionListRenderer": {"contents": [{"itemSectionRenderer": {"contents": [
+            {"videoRenderer": {
+                "videoId": "vid1",
+                "title": {"runs": [{"text": "Best cricket bat review 2026"}]},
+                "ownerText": {"runs": [{"text": "CricketGear PK"}]},
+                "viewCountText": {"simpleText": "12,345 views"},
+            }}]}}]}}}}]}
+
+
+def _yt_next_payload(token="TOK"):
+    return {"engagementPanels": [{"engagementPanelSectionListRenderer": {
+        "panelIdentifier": "engagement-panel-comments-section",
+        "content": {"continuationItemRenderer": {"continuationEndpoint": {
+            "continuationCommand": {"token": token}}}}}}]}
+
+
+def _yt_comments_payload(comments, next_token=None):
+    mutations = [{"entityKey": f"comment:{c['id']}", "payload": {"commentEntityPayload": {
+        "properties": {"commentId": c["id"], "content": {"content": c["text"]},
+                       "publishedTime": c.get("when")},
+        "author": {"displayName": c["author"]},
+        "toolbar": {"likeCountNotliked": c.get("likes", "")},
+    }}} for c in comments]
+    out = {"frameworkUpdates": {"entityBatchUpdate": {"mutations": mutations}},
+           "onResponseReceivedEndpoints": [{"appendContinuationItemsAction": {
+               "continuationItems": [
+                   {"commentThreadRenderer": {"comment": {}}},
+                   *( [] if not next_token else [{"continuationItemRenderer": {
+                       "continuationEndpoint": {"continuationCommand": {
+                           "token": next_token}}}}]),
+               ]}}]}
+    return out
+
+
+def test_youtube_innertube_collect_parses_real_payloads():
+    """Mocked InnerTube payloads must yield real comment items end-to-end."""
+    from app.integrations.live_sources import YouTubeInnertubeClient, collect_youtube
+
+    page1 = _yt_comments_payload(
+        [{"id": "c1", "text": "This bat has great ping and pickup.", "author": "A",
+          "when": "2 months ago", "likes": "12"},
+         {"id": "c2", "text": "Handle cracked after two weeks, poor quality.", "author": "B",
+          "when": "3 weeks ago", "likes": "3"}],
+        next_token="PAGE2")
+    page2 = _yt_comments_payload(
+        [{"id": "c3", "text": "Worth the price, will order again.", "author": "C",
+          "when": "1 day ago", "likes": "1"}])
+
+    client = YouTubeInnertubeClient()
+    scripted = {"search": _yt_search_payload(), "next1": _yt_next_payload(),
+                "page1": page1, "page2": page2}
+
+    def fake_post(self, url, payload):
+        if "/search?" in url:
+            return scripted["search"]
+        if "videoId" in payload:
+            return scripted["next1"]
+        return page1 if payload.get("continuation") == "TOK" else page2
+
+    with patch.object(ls.settings, "YOUTUBE_MAX_VIDEOS", 3), \
+            patch.object(ls.settings, "YOUTUBE_COMMENTS_PER_VIDEO", 10), \
+            patch.object(ls.settings, "INNERTUBE_MIN_INTERVAL_SECONDS", 0.0), \
+            patch.object(YouTubeInnertubeClient, "_post", fake_post):
+        res = collect_youtube("cricket bat", None, 50)
+
+    assert res.status == AdapterStatus.SUCCESS
+    assert res.data_source == "live"
+    texts = [i.text for i in res.items]
+    assert len(texts) == 3
+    assert "This bat has great ping and pickup." in texts
+    authors = [i.author for i in res.items]
+    assert "A" in authors
+    assert res.items[0].external_id.startswith("yt_")
+    assert res.items[0].source_url == "https://www.youtube.com/watch?v=vid1"
+
+
+def test_daraz_review_text_blocked_note_is_honest():
+    """HTML (non-JSON) review endpoint responses must produce the honest block note."""
+    class _HTMLResponse:
+        status_code = 200
+        headers = {"content-type": "text/html"}
+        text = "<html>error page</html>"
+
+        def json(self):
+            raise ValueError("not json")
+
+    listings = [{"external_id": "123", "name": "Bat", "url": "https://x/"}]
+    with patch.object(ls.requests, "get", lambda *a, **k: _HTMLResponse()):
+        items, note = ls.fetch_daraz_reviews(listings, 50)
+    assert items == []
+    assert "not accessible" in note and "anti-bot" in note
+
+
+def test_min_50_policy_excludes_below_minimum_platforms(db):
+    """Platforms below 50 real comments carry the message and are NOT analyzed."""
+    import json as _json
+    from app.models import JobPlatformStatus, SearchJob
+    from app.services import aggregation
+
+    job = SearchJob(id="min50test", product_name="cricket bat",
+                    platforms_requested='["youtube","reddit","daraz"]', status="completed")
+    db.add(job)
+    db.add(JobPlatformStatus(job_id="min50test", platform_key="youtube",
+                             platform_name="YouTube", status="success", items_collected=60))
+    db.add(JobPlatformStatus(job_id="min50test", platform_key="reddit",
+                             platform_name="Reddit", status="success", items_collected=3))
+    db.add(JobPlatformStatus(job_id="min50test", platform_key="daraz",
+                             platform_name="Daraz", status="success", items_collected=0))
+    db.commit()
+
+    from app.integrations.base import AdapterResult
+    texts = [f"cricket bat number {i} feels {'great and powerful' if i % 2 else 'poor and weak'}"
+             for i in range(60)]
+    yt_items = [ls.ReviewItem(external_id=f"y{i}", text=t, relevance_hint=0.9)
+                for i, t in enumerate(texts)]
+    reddit_items = [ls.ReviewItem(external_id=f"r{i}", text=f"bat {i} is {'nice' if i % 2 else 'bad'}",
+                                  relevance_hint=0.9) for i in range(3)]
+    process_adapter_result(db, "min50test",
+                           AdapterResult("youtube", AdapterStatus.SUCCESS, items=yt_items),
+                           {"bat", "cricket"})
+    process_adapter_result(db, "min50test",
+                           AdapterResult("reddit", AdapterStatus.SUCCESS, items=reddit_items),
+                           {"bat", "cricket"})
+
+    report = aggregation.analyze(db, "min50test")
+
+    # verdict must be based ONLY on the qualifying platform (youtube, 60 >= 50)
+    basis = report["verdict"]["basis"]
+    assert basis["min_comments_required"] == 50
+    assert basis["platforms_included"] == ["youtube"]
+    assert set(basis["platforms_excluded"]) == {"reddit", "daraz"}
+    assert report["totals"]["analyzed_for_verdict"] == report["totals"]["analyzed"] - 3 \
+        or basis["analyzed_comments_for_verdict"] == 60
+    assert report["totals"]["platforms_meeting_minimum"] == 1
+
+    # below-minimum entries + exact user-facing message
+    bm = {b["platform"]: b for b in report["below_minimum_platforms"]}
+    assert bm["reddit"]["analyzed_comments"] == 3
+    assert bm["daraz"]["analyzed_comments"] == 0
+    assert "below the 50-comment minimum" in bm["reddit"]["message"]
+    assert "cannot be processed" in bm["daraz"]["message"]
+
+    # comparison: reddit has no percentages; youtube does.
+    # daraz (zero collected comments) has no comparison row at all - it is
+    # reported via below_minimum_platforms + platform_statuses instead.
+    comp = {c["platform"]: c for c in report["comparison"]}
+    assert "daraz" not in comp
+    assert comp["youtube"]["analysis_processed"] is True
+    assert comp["youtube"]["positive_pct"] is not None
+    assert comp["reddit"]["analysis_processed"] is False
+    assert comp["reddit"]["positive_pct"] is None
+
+    # status rows were annotated with the explanation
+    reddit_status = db.query(JobPlatformStatus).filter_by(
+        job_id="min50test", platform_key="reddit").one()
+    assert "50-comment minimum" in reddit_status.message

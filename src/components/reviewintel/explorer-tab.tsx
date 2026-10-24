@@ -13,8 +13,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { pyFetch } from "@/lib/pyapi";
-import type { PaginatedReviews, ReviewRow, SentimentLabel } from "@/lib/types";
-import { ChevronUp, ExternalLink, Filter, Languages, Search, Sparkles } from "lucide-react";
+import type { BelowMinimumPlatform, PaginatedReviews, ReviewRow, SentimentLabel } from "@/lib/types";
+import { ChevronUp, ExternalLink, Filter, Info, Languages, Search, Sparkles } from "lucide-react";
 
 const SENTIMENT_BADGE: Record<string, string> = {
   positive: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700",
@@ -23,7 +23,7 @@ const SENTIMENT_BADGE: Record<string, string> = {
   mixed: "border-amber-500/40 bg-amber-500/10 text-amber-700",
 };
 
-export function ExplorerTab({ jobId }: { jobId: string }) {
+export function ExplorerTab({ jobId, belowMinimum = [] }: { jobId: string; belowMinimum?: BelowMinimumPlatform[] }) {
   const [platform, setPlatform] = useState("all");
   const [sentiment, setSentiment] = useState("all");
   const [language, setLanguage] = useState("all");
@@ -63,6 +63,19 @@ export function ExplorerTab({ jobId }: { jobId: string }) {
 
   return (
     <div className="space-y-4">
+      {belowMinimum.length > 0 ? (
+        <div className="space-y-2">
+          {belowMinimum.map((b) => (
+            <div key={b.platform}
+              className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+              <Info className="mt-0.5 size-4 shrink-0 text-amber-600" />
+              <p>
+                <b>{b.platform_name}:</b> {b.message}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-wrap items-center gap-2">
