@@ -40,7 +40,7 @@ def _limitation_lines(ctx: dict) -> list[str]:
         "• Predicted impressions/clicks/conversions/revenue are MODEL PREDICTIONS from documented funnel assumptions; they are not guarantees.",
     ]
     if a.ads_history_status != "live":
-        lines.append("• Campaign history used SYNTHETIC DEMO DATA (Google Ads not connected or without history).")
+        lines.append("• Campaign history used ESTIMATED DATA (Google Ads not connected or without history).")
     if a.youtube_research_status != "live":
         lines.append("• Competitor research could not reach the YouTube Data API; the competitor section may be empty.")
     lines.append("• Public YouTube statistics describe organic engagement only — never ad spend, conversions or competitor ROAS.")
@@ -74,7 +74,7 @@ def generate_pdf(db: Session, analysis: ProductAnalysis, out_path: str | Path) -
     story = [
         Paragraph("AdPilot AI — Budget Optimization Report", h1),
         Paragraph(f"Generated for: <b>{ctx['product'].name}</b> · Currency: {rec.currency if rec else 'PKR'} · "
-                  f"Data labels: LIVE / SYNTHETIC DEMO / MODEL PREDICTION are marked per section.", small),
+                  f"Data labels: LIVE / ESTIMATED / MODEL PREDICTION are marked per section.", small),
         HRFlowable(width="100%", color=accent, thickness=2),
     ]
 

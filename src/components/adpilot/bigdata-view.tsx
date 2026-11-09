@@ -185,7 +185,9 @@ export function BigDataView() {
                         {b.status === "ok" ? (
                           <span className="text-emerald-400">ok</span>
                         ) : (
-                          <span className="text-rose-400" title={b.error}>error</span>
+                          <span className="text-rose-400" title={b.error}>
+                            {b.error ? `error — ${b.error.slice(0, 42)}` : "error"}
+                          </span>
                         )}
                       </TableCell>
                     </TableRow>

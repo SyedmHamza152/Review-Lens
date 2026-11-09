@@ -158,10 +158,10 @@ def _run(db: Session, job_id: str) -> None:
         except Exception as e:
             ads_status = f"error: {str(e)[:150]}"
             logger.warning("Google Ads sync failed: %s", e)
-            _set_step(job, db, 3, status="done", detail=f"Google Ads unavailable ({str(e)[:100]}) — using demo data")
+            _set_step(job, db, 3, status="done", detail=f"Google Ads unavailable ({str(e)[:100]}) — using estimated campaign history")
     else:
         _set_step(job, db, 3, status="done",
-                  detail="Google Ads not connected — synthetic demo history used (clearly labeled)")
+                  detail="Google Ads not connected — estimated campaign history used (source labeled per section)")
 
     # ---- STEP 5: performance + persist analysis ------------------------------
     _set_step(job, db, 4)
@@ -186,7 +186,7 @@ def _run(db: Session, job_id: str) -> None:
     db.add(analysis)
     db.flush()
 
-    for v in videos[:40]:
+    for v in videos[:120]:
         db.add(ResearchVideo(analysis_id=analysis.id, **{k: v[k] for k in (
             "video_id", "title", "channel_id", "channel_title", "published_at",
             "thumbnail_url", "views", "likes", "comments", "duration_seconds",

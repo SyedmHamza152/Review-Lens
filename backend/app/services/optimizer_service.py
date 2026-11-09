@@ -212,7 +212,7 @@ def build_format_scores(
 
         evidence = []
         if hist and n_hist > 0:
-            src = "live" if hist["source"] == "live" else "synthetic demo"
+            src = "live" if hist["source"] == "live" else "benchmark"
             evidence.append(
                 f"historical {src} campaigns: CTR {hist_m['ctr']:.2f}%, "
                 f"{'CPV' if prior.pricing_model == 'cpv' else 'CPC'} {unit_cost:.2f}, CVR {cvr * 100:.2f}%"

@@ -110,11 +110,12 @@ export default function Page() {
 
   const showChrome = view.name === "app" || view.name === "progress" || view.name === "analyze";
   const currentKey: ViewKey = view.name === "app" ? view.key : "dashboard";
+  const navTo = useCallback((key: ViewKey) => go({ name: "app", key }), [go]);
 
   return (
     <div className="flex min-h-screen">
       {showChrome ? (
-        <Sidebar current={currentKey} onNewAnalysis={() => go({ name: "analyze" })} />
+        <Sidebar current={currentKey} onNewAnalysis={() => go({ name: "analyze" })} onNavigate={navTo} />
       ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
         {showChrome ? (
@@ -127,7 +128,13 @@ export default function Page() {
                 : undefined
             }
             onHome={() => go({ name: "landing" })}
-            mobileNav={<MobileNav current={currentKey} onNewAnalysis={() => go({ name: "analyze" })} />}
+            mobileNav={
+              <MobileNav
+                current={currentKey}
+                onNewAnalysis={() => go({ name: "analyze" })}
+                onNavigate={navTo}
+              />
+            }
           />
         ) : null}
         <main className="flex-1">

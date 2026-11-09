@@ -73,7 +73,7 @@ export function MlLabView() {
       </div>
 
       {!data.available ? (
-        <ErrorNote message="No trained models yet — generate the 100k dataset in the Big Data Lab, then click Retrain." />
+        <ErrorNote message="No trained models yet — click Retrain and AdPilot prepares the training dataset and runs all candidate models automatically." />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3 text-xs text-muted-foreground">

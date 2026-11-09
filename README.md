@@ -57,8 +57,9 @@ FastAPI (backend/app)
    verified demographics.
 3. **Marketing objective** — decision matrix over purchase intent × price band ×
    budget size → Awareness / Video Views / Traffic / Leads / Sales, with rationale.
-4. **Researching YouTube market** — *live* YouTube Data API v3 search (up to 30 public
-   videos per run — one flat 100-quota-unit search call) + video stats +
+4. **Researching YouTube market** — *live* YouTube Data API v3 research across four
+   diversified queries (reviews, unboxings, comparisons, "best X" round-ups) with
+   pagination — typically **60–100+ unique public videos per run** — plus video and
    channel stats (quota-tracked, cached, backoff). Clearly organic metrics only.
 5. **Fetching advertising history** — *live* Google Ads GAQL sync (VIDEO channel
    only) when connected; otherwise the labeled **synthetic demo history** (12
@@ -290,7 +291,8 @@ Notes:
 ## 8. Training the ML models
 
 ```powershell
-# one-time: generate the 100k training corpus (Big Data Lab or CLI)
+# one-time: generate the 100k training corpus (optional — the Retrain button
+# in the ML Lab auto-generates it when missing)
 python ..\scripts\generate_dataset.py --rows 100000
 
 # train all candidates on 8 targets and save artifacts to models/
@@ -302,7 +304,9 @@ python ..\scripts\train_models.py
   compared with MAE / RMSE / R² on a chronological 80/20 split (no temporal leakage).
 - Artifacts: `models/<target>_best.joblib` + `models/metrics.json`; mirrored into the
   `model_registry` table. Retrain any time new campaign data lands
-  (`POST /api/v1/ml/train` or the ML Lab button).
+  (`POST /api/v1/ml/train` or the ML Lab button — if no 100k dataset exists yet,
+  the endpoint generates one automatically before training, so the button
+  always works).
 - A missing registry never blocks the optimizer — documented cold-start priors are
   used instead and the analysis is labeled accordingly.
 

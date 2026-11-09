@@ -1,6 +1,7 @@
 """ML Lab, Big Data Lab, and Reports endpoints."""
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,10 +62,24 @@ def ml_predict(payload: PredictRequest):
 
 @router.post("/ml/train", status_code=202)
 def ml_train(db: Session = Depends(get_db)):
-    """Retrain on the 100k synthetic dataset (or live campaign dump when present)."""
+    """Retrain on the 100k dataset (or live campaign dump when present).
+
+    If no 100k dataset exists yet, one is generated automatically first —
+    training is then queued exactly as if it had been produced in the
+    Big Data Lab. This keeps the Retrain button usable at any time.
+    """
     datasets = sorted(Path(settings.DATA_DIR).glob("datasets/ad_campaigns_100000_*.csv"))
     if not datasets:
-        raise HTTPException(409, "No 100k training dataset found — generate one in the Big Data Lab first")
+        # Auto-generate the 100k dataset inline (streamed, ~seconds) so the
+        # caller never hits a dead end requiring a detour to the Big Data Lab.
+        from app.bigdata.generator import generate_dataset
+
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = Path(settings.DATA_DIR) / "datasets" / f"ad_campaigns_100000_{stamp}.csv"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        logging.getLogger(__name__).info("Auto-generating 100k dataset for training: %s", out)
+        generate_dataset(100_000, out, seed=42)
+        datasets = [out]
 
     # training runs in the background pool; UI polls GET /api/v1/ml/models
     def run():
@@ -79,7 +94,10 @@ def ml_train(db: Session = Depends(get_db)):
         invalidate_cache()
 
     submit(run, name="ml-train")
-    return {"status": "queued", "note": "Poll GET /api/v1/ml/models until 'available' is true"}
+    return {"status": "queued",
+            "dataset_generated": len(datasets) == 1 and datasets[0].stat().st_size > 0,
+            "dataset": datasets[-1].name,
+            "note": "Poll GET /api/v1/ml/models until 'available' is true"}
 
 
 def _sync_registry() -> None:

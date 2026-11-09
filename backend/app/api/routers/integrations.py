@@ -167,7 +167,7 @@ def campaign_performance(campaign_id: int, db: Session = Depends(get_db)):
 
 # ------------------------------------------------------------------ YouTube research
 @yt_router.get("/research")
-def youtube_research(product: str = Query(min_length=2), limit: int = Query(30, ge=1, le=50)):
+def youtube_research(product: str = Query(min_length=2), limit: int = Query(80, ge=1, le=150)):
     """LIVE public YouTube research for a product name (organic metrics only)."""
     try:
         return youtube_client.research_product(product, limit=limit)
@@ -194,7 +194,7 @@ def youtube_research_refresh(analysis_id: int, db: Session = Depends(get_db)):
         raise HTTPException(502, f"YouTube Data API error: {str(e)[:300]}")
 
     db.query(ResearchVideo).filter(ResearchVideo.analysis_id == analysis_id).delete()
-    for v in payload.get("videos", [])[:40]:
+    for v in payload.get("videos", [])[:120]:
         db.add(ResearchVideo(analysis_id=analysis_id, **{
             k: v[k] for k in (
                 "video_id", "title", "channel_id", "channel_title", "published_at",

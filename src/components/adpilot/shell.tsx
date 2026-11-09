@@ -27,10 +27,14 @@ function NavList({
   current,
   onNewAnalysis,
   onNavigate,
+  onAfterNavigate,
 }: {
   current: ViewKey;
   onNewAnalysis: () => void;
-  onNavigate?: () => void;
+  /** Called on click — navigates via the router so the view ALWAYS switches,
+   *  even when the browser suppresses hashchange (e.g. same-hash edge cases). */
+  onNavigate?: (key: ViewKey) => void;
+  onAfterNavigate?: () => void;
 }) {
   const groups = Array.from(new Set(NAV.map((n) => n.group)));
   return (
@@ -38,7 +42,7 @@ function NavList({
       <button
         onClick={() => {
           onNewAnalysis();
-          onNavigate?.();
+          onAfterNavigate?.();
         }}
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground transition hover:opacity-90"
       >
@@ -57,7 +61,13 @@ function NavList({
                 <a
                   key={n.key}
                   href={`#/${n.key}`}
-                  onClick={onNavigate}
+                  onClick={(e) => {
+                    // preventDefault + explicit navigation: identical result to
+                    // native hash nav, but deterministic in every environment.
+                    e.preventDefault();
+                    if (onNavigate) onNavigate(n.key);
+                    onAfterNavigate?.();
+                  }}
                   className={cn(
                     "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors",
                     active
@@ -77,9 +87,17 @@ function NavList({
   );
 }
 
-export function Sidebar({ current, onNewAnalysis }: { current: ViewKey; onNewAnalysis: () => void }) {
+export function Sidebar({
+  current,
+  onNewAnalysis,
+  onNavigate,
+}: {
+  current: ViewKey;
+  onNewAnalysis: () => void;
+  onNavigate?: (key: ViewKey) => void;
+}) {
   return (
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-sidebar lg:flex">
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r bg-sidebar md:flex">
       <div className="flex items-center gap-2.5 px-5 py-5">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
           <Radio className="h-5 w-5" />
@@ -89,9 +107,9 @@ export function Sidebar({ current, onNewAnalysis }: { current: ViewKey; onNewAna
           <p className="text-[10px] text-muted-foreground">YouTube Budget Optimizer</p>
         </div>
       </div>
-      {/* Plain <a> tags (not next/link): native hash navigation fires `hashchange`,
-          which the router in page.tsx listens on to switch views. */}
-      <NavList current={current} onNewAnalysis={onNewAnalysis} />
+      {/* Navigation is driven by onNavigate (router) — the href stays for
+          semantics and open-in-new-tab. */}
+      <NavList current={current} onNewAnalysis={onNewAnalysis} onNavigate={onNavigate} />
       <div className="border-t px-5 py-3 text-[10px] leading-relaxed text-muted-foreground">
         Only YouTube inventory is supported:
         <br />In-Stream · Shorts · In-Feed
@@ -100,19 +118,27 @@ export function Sidebar({ current, onNewAnalysis }: { current: ViewKey; onNewAna
   );
 }
 
-export function MobileNav({ current, onNewAnalysis }: { current: ViewKey; onNewAnalysis: () => void }) {
+export function MobileNav({
+  current,
+  onNewAnalysis,
+  onNavigate,
+}: {
+  current: ViewKey;
+  onNewAnalysis: () => void;
+  onNavigate?: (key: ViewKey) => void;
+}) {
   const [open, setOpen] = React.useState(false);
   return (
     <>
       <button
         aria-label="Open navigation"
         onClick={() => setOpen(true)}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-card text-foreground lg:hidden"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border bg-card text-foreground md:hidden"
       >
         <Menu className="h-4.5 w-4.5" />
       </button>
       {open ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
           <aside className="adpilot-scroll absolute left-0 top-0 flex h-full w-64 flex-col border-r bg-sidebar shadow-xl">
             <div className="flex items-center justify-between px-5 py-4">
@@ -126,7 +152,12 @@ export function MobileNav({ current, onNewAnalysis }: { current: ViewKey; onNewA
                 <X className="h-4 w-4 text-muted-foreground" />
               </button>
             </div>
-            <NavList current={current} onNewAnalysis={onNewAnalysis} onNavigate={() => setOpen(false)} />
+            <NavList
+              current={current}
+              onNewAnalysis={onNewAnalysis}
+              onNavigate={onNavigate}
+              onAfterNavigate={() => setOpen(false)}
+            />
             <div className="border-t px-5 py-3 text-[10px] leading-relaxed text-muted-foreground">
               Only YouTube inventory is supported:
               <br />In-Stream · Shorts · In-Feed
@@ -160,7 +191,7 @@ export function Topbar({
           e.preventDefault();
           onHome();
         }}
-        className="flex items-center gap-2 lg:hidden"
+        className="flex items-center gap-2 md:hidden"
       >
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/15 text-primary">
           <Radio className="h-4 w-4" />
