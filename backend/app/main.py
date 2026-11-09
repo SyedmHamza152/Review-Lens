@@ -30,6 +30,8 @@ app.add_middleware(
 
 app.include_router(core.router, prefix="/api/v1")
 app.include_router(integrations.router, prefix="/api/v1")
+app.include_router(integrations.ads_router, prefix="/api/v1")
+app.include_router(integrations.yt_router, prefix="/api/v1")
 app.include_router(analysis.router, prefix="/api/v1")
 app.include_router(labs.router, prefix="/api/v1")
 

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 import { Database, FileDown, Gauge, Play, Timer } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import {
-  CardsSkeleton, DataBadge, ErrorNote, SectionTitle, fmtNum,
+  CardsSkeleton, ChartTooltip, DataBadge, ErrorNote, SectionTitle, fmtNum,
 } from "@/components/adpilot/bits";
 import { pyUrl, pyFetch } from "@/lib/pyapi";
 import type { BenchmarkRow, BigDataJob } from "@/lib/types";
@@ -82,7 +82,7 @@ export function BigDataView() {
           <SectionTitle
             title="Run a benchmark"
             desc="The generator streams rows to CSV (10k–10M), then each engine ingests, cleans, transforms and aggregates the same file. Totals are cross-checked for equivalence."
-            label="SYNTHETIC DEMO DATA"
+            label="ESTIMATED DATA"
           />
         </CardHeader>
         <CardContent className="space-y-4">
@@ -264,7 +264,7 @@ function BenchmarkChart({ benchmarks }: { benchmarks: BenchmarkRow[] }) {
           <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" />
           <XAxis dataKey="size" tick={{ fill: "#7c8db0", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
           <YAxis tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}s`} width={44} />
-          <Tooltip contentStyle={{ background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 }} />
+          <ChartTooltip />
           {["Pandas", "Python MapReduce", "PySpark (local)"].map((k, i) => (
             <Bar key={k} dataKey={k} fill={["#34d399", "#f59e0b", "#38bdf8"][i]} radius={[4, 4, 0, 0]} />
           ))}

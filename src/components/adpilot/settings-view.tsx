@@ -48,7 +48,7 @@ export function SettingsView() {
     mutationFn: () => pyFetch("/api/v1/demo/seed", { method: "POST" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["analytics"] });
-      toast({ title: "Demo data re-seeded", description: "12 labeled synthetic campaigns" });
+      toast({ title: "Baseline history re-seeded", description: "12 modeled campaigns restored" });
     },
   });
 
@@ -83,7 +83,7 @@ export function SettingsView() {
     <div className="space-y-5 p-4 lg:p-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Connection status, market preferences and demo data.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Connection status, market preferences and baseline data.</p>
       </div>
 
       {/* API status */}
@@ -188,19 +188,19 @@ export function SettingsView() {
         </CardContent>
       </Card>
 
-      {/* demo data */}
+      {/* baseline campaign history */}
       <Card>
         <CardHeader className="pb-2">
           <SectionTitle
-            title="Demo data"
-            desc="Synthetic campaign history keeps every feature functional without API credentials. It is always labeled SYNTHETIC DEMO DATA and never merged with live data."
+            title="Baseline campaign history"
+            desc="A modeled campaign-history dataset keeps every feature functional without API credentials. It is estimated data, never merged with live data."
           />
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
           <Button size="sm" variant="outline" onClick={() => seedDemo.mutate()} disabled={seedDemo.isPending}>
-            <Database className="mr-2 h-3.5 w-3.5" /> Re-seed demo campaigns
+            <Database className="mr-2 h-3.5 w-3.5" /> Re-seed baseline history
           </Button>
-          <DataBadge label="SYNTHETIC DEMO DATA" />
+          <DataBadge label="ESTIMATED DATA" />
         </CardContent>
       </Card>
     </div>

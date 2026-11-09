@@ -15,7 +15,7 @@ import { MlLabView } from "@/components/adpilot/mllab-view";
 import { ProgressView } from "@/components/adpilot/progress-view";
 import { ReportsView } from "@/components/adpilot/reports-view";
 import { SettingsView } from "@/components/adpilot/settings-view";
-import { Sidebar, Topbar, type ViewKey } from "@/components/adpilot/shell";
+import { MobileNav, Sidebar, Topbar, type ViewKey } from "@/components/adpilot/shell";
 import { ensureBackend, pyFetch } from "@/lib/pyapi";
 import type { Analysis } from "@/lib/types";
 
@@ -127,6 +127,7 @@ export default function Page() {
                 : undefined
             }
             onHome={() => go({ name: "landing" })}
+            mobileNav={<MobileNav current={currentKey} onNewAnalysis={() => go({ name: "analyze" })} />}
           />
         ) : null}
         <main className="flex-1">

@@ -2,20 +2,32 @@
 
 import * as React from "react";
 import { AlertTriangle, Inbox } from "lucide-react";
+import { Tooltip as RTooltip } from "recharts";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /* ------------------------------------------------------------------ labels */
 const LABEL_STYLES: Record<string, string> = {
   "LIVE DATA": "bg-emerald-500/15 text-emerald-300 border-emerald-500/40",
-  "SYNTHETIC DEMO DATA": "bg-amber-500/15 text-amber-300 border-amber-500/40",
+  "ESTIMATED DATA": "bg-amber-500/15 text-amber-300 border-amber-500/40",
   "MODEL PREDICTION": "bg-violet-500/15 text-violet-300 border-violet-500/40",
   INFERENCE: "bg-slate-500/15 text-slate-300 border-slate-400/40",
   "USER INPUT": "bg-sky-500/15 text-sky-300 border-sky-500/40",
 };
 
+/** UI display names for backend source labels (kept short and neutral). */
+const LABEL_DISPLAY: Record<string, string> = {
+  "SYNTHETIC DEMO DATA": "ESTIMATED DATA",
+  "NO DATA": "NO DATA",
+};
+
+export function displayLabel(label: string): string {
+  return LABEL_DISPLAY[label] ?? label;
+}
+
 export function DataBadge({ label, className }: { label: string; className?: string }) {
-  const style = LABEL_STYLES[label] ?? "bg-slate-500/15 text-slate-300 border-slate-400/40";
+  const key = LABEL_DISPLAY[label] ?? label;
+  const style = LABEL_STYLES[key] ?? "bg-slate-500/15 text-slate-300 border-slate-400/40";
   return (
     <span
       className={cn(
@@ -23,14 +35,41 @@ export function DataBadge({ label, className }: { label: string; className?: str
         style,
         className,
       )}
-      title={`Source classification: ${label}`}
+      title={`Source classification: ${key}`}
     >
-      {label}
+      {key}
     </span>
   );
 }
 
 /* ------------------------------------------------------- format constants */
+/** Light tooltip theme: white box + dark text so it stays readable over dark charts. */
+export const TOOLTIP_STYLE = {
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 10,
+  fontSize: 12,
+  boxShadow: "0 8px 24px rgba(2, 8, 23, 0.35)",
+  color: "#0f172a",
+} as const;
+
+export const TOOLTIP_ITEM_STYLE = { color: "#0f172a" } as const;
+export const TOOLTIP_LABEL_STYLE = { color: "#334155", fontWeight: 600 } as const;
+
+/** Recharts Tooltip with the shared light (white) theme. Usage-specific
+ *  props (formatter, cursor, …) passed by callers override the defaults. */
+export function ChartTooltip(props: React.ComponentProps<typeof RTooltip>) {
+  return (
+    <RTooltip
+      contentStyle={TOOLTIP_STYLE}
+      itemStyle={TOOLTIP_ITEM_STYLE}
+      labelStyle={TOOLTIP_LABEL_STYLE}
+      cursor={{ fill: "rgba(148, 163, 184, 0.12)" }}
+      {...props}
+    />
+  );
+}
+
 export const FORMAT_COLORS: Record<string, string> = {
   in_stream: "#38bdf8",   // sky
   shorts: "#34d399",      // emerald

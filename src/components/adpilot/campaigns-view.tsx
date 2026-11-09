@@ -4,19 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line,
-  LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  LineChart, Pie, PieChart, ResponsiveContainer, XAxis, YAxis,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  CardsSkeleton, DataBadge, EmptyState, ErrorNote, SectionTitle, formatColor,
+  CardsSkeleton, ChartTooltip, DataBadge, EmptyState, ErrorNote, SectionTitle, formatColor,
   fmtMoney, fmtNum, fmtPctRaw,
 } from "@/components/adpilot/bits";
 import { pyFetch } from "@/lib/pyapi";
 import type { Analytics } from "@/lib/types";
 
-const TOOLTIP_STYLE = { background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 };
 const SEGMENT_COLORS = ["#38bdf8", "#34d399", "#f59e0b", "#a78bfa", "#fb7185", "#22d3ee", "#facc15", "#4ade80", "#f472b6", "#94a3b8"];
 
 export function CampaignsView() {
@@ -78,7 +77,7 @@ export function CampaignsView() {
       {!hasData ? (
         <EmptyState
           title="No campaign history"
-          hint="Connect a Google Ads account in Settings (or keep the labeled synthetic demo data) to populate this page."
+          hint="Connect a Google Ads account in Settings (or keep the baseline campaign history) to populate this page."
         />
       ) : (
         <>
@@ -113,7 +112,7 @@ export function CampaignsView() {
                       <XAxis dataKey="date" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} minTickGap={28} />
                       <YAxis yAxisId="l" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={56} />
                       <YAxis yAxisId="r" orientation="right" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={48} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number, n) => [fmtNum(v, 1), String(n)]} />
+                      <ChartTooltip formatter={(v: number, n) => [fmtNum(v, 1), String(n)]} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Area yAxisId="l" type="monotone" dataKey="impressions" name="Impressions" stroke="#38bdf8" strokeWidth={1.6} fill="url(#imprFill)" />
                       <Line yAxisId="r" type="monotone" dataKey="clicks" name="Clicks" stroke="#34d399" strokeWidth={1.8} dot={false} />
@@ -136,7 +135,7 @@ export function CampaignsView() {
                         <XAxis dataKey="format_key" tick={{ fill: "#7c8db0", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
                         <YAxis yAxisId="l" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={56} />
                         <YAxis yAxisId="r" orientation="right" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} width={44} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} />
+                        <ChartTooltip />
                         <Legend wrapperStyle={{ fontSize: 11 }} />
                         <Bar yAxisId="l" dataKey="impressions" name="Impressions" radius={[4, 4, 0, 0]}>
                           {fmtRows.map((f) => (
@@ -159,7 +158,7 @@ export function CampaignsView() {
                         <XAxis dataKey="format_key" tick={{ fill: "#7c8db0", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
                         <YAxis yAxisId="l" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={56} />
                         <YAxis yAxisId="r" orientation="right" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} width={44} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} />
+                        <ChartTooltip />
                         <Legend wrapperStyle={{ fontSize: 11 }} />
                         <Bar yAxisId="l" dataKey="cost" name="Cost" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={30} />
                         <Line yAxisId="r" type="monotone" dataKey="cpa" name="CPA" stroke="#fb7185" strokeWidth={2} dot={{ r: 4 }} />
@@ -188,7 +187,7 @@ export function CampaignsView() {
                               <Cell key={i} fill={SEGMENT_COLORS[i % SEGMENT_COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number, n) => [fmtNum(v), `${n} impressions`]} />
+                          <ChartTooltip formatter={(v: number, n) => [fmtNum(v), `${n} impressions`]} />
                           <Legend wrapperStyle={{ fontSize: 11 }} />
                         </PieChart>
                       </ResponsiveContainer>
@@ -211,7 +210,7 @@ export function CampaignsView() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" horizontal={false} />
                           <XAxis type="number" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} tickFormatter={(v) => fmtNum(v)} />
                           <YAxis type="category" dataKey="city" width={82} tick={{ fill: "#c3cfe6", fontSize: 10 }} axisLine={false} tickLine={false} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} />
+                          <ChartTooltip />
                           <Bar dataKey="cost" name="Cost" fill="#a78bfa" radius={[0, 5, 5, 0]} barSize={14} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -231,7 +230,7 @@ export function CampaignsView() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" />
                           <XAxis dataKey="age" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
                           <YAxis tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={52} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} />
+                          <ChartTooltip />
                           <Bar dataKey="clicks" name="Clicks" radius={[4, 4, 0, 0]}>
                             {(data.by_age ?? []).map((_, i) => (
                               <Cell key={i} fill={SEGMENT_COLORS[i % SEGMENT_COLORS.length]} />

@@ -139,7 +139,7 @@ export function ReportsView({ analysisId }: { analysisId: number | null }) {
 
       <div className="flex flex-wrap gap-2">
         <DataBadge label="LIVE DATA" />
-        <DataBadge label="SYNTHETIC DEMO DATA" />
+        <DataBadge label="ESTIMATED DATA" />
         <DataBadge label="MODEL PREDICTION" />
         <span className="text-xs text-muted-foreground">
           — every report section carries its own source label, so a reader can never mistake one class of number for another.

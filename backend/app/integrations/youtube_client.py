@@ -77,12 +77,17 @@ def _with_backoff(fn, *, retries: int = 3, base_delay: float = 1.0):
     raise last_exc  # type: ignore[misc]
 
 
-def search_videos(query: str, *, limit: int = 12, order: str = "relevance") -> list[dict]:
-    """Search public videos. Returns raw items (videoId, title, channel)."""
+def search_videos(query: str, *, limit: int = 30, order: str = "relevance") -> list[dict]:
+    """Search public videos. Returns raw items (videoId, title, channel).
+
+    search.list accepts maxResults up to 50 per call and costs a flat 100
+    quota units per call regardless of page size — so prefer one larger
+    call over several small ones.
+    """
     svc = _client()
     try:
         resp = _with_backoff(lambda: svc.search().list(
-            q=query, part="snippet", type="video", maxResults=min(limit, 25),
+            q=query, part="snippet", type="video", maxResults=min(limit, 50),
             order=order, relevanceLanguage="en", safeSearch="moderate",
         ).execute())
         quota_state.spend(QUOTA_COST["search"])
@@ -174,7 +179,7 @@ def _parse_duration(iso: str) -> int:
     return d * 86400 + h * 3600 + mi * 60 + s
 
 
-def research_product(product_name: str, description: str = "", *, limit: int = 12) -> dict:
+def research_product(product_name: str, description: str = "", *, limit: int = 30) -> dict:
     """Full research bundle for a product: search + details + channels + analysis.
 
     Returned rows are ORGANIC content metrics. Engagement rate is computed

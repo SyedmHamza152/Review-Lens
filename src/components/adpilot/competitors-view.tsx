@@ -77,7 +77,7 @@ export function CompetitorsView({ analysisId }: { analysisId: number | null }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <DataBadge label={live ? "LIVE DATA" : "SYNTHETIC DEMO DATA"} />
+          <DataBadge label={live ? "LIVE DATA" : "ESTIMATED DATA"} />
           <Button
             size="sm" variant="outline"
             onClick={() => refreshResearch.mutate()}

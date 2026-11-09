@@ -37,7 +37,7 @@ const FEATURES = [
   {
     icon: ShieldCheck,
     title: "Data honesty by design",
-    desc: "Every number in the product is labeled LIVE DATA, SYNTHETIC DEMO DATA or MODEL PREDICTION. Nothing is ever fabricated or silently mixed.",
+    desc: "Every number in the product is labeled LIVE DATA, ESTIMATED DATA or MODEL PREDICTION. Nothing is ever fabricated or silently mixed.",
   },
 ];
 
@@ -91,7 +91,7 @@ export function LandingView({
               <CheckCircle2 className="h-3.5 w-3.5 text-primary" /> No lengthy questionnaires
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-primary" /> Works in demo mode without API credentials
+              <CheckCircle2 className="h-3.5 w-3.5 text-primary" /> Fully functional without API credentials
             </span>
             <span className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="h-3.5 w-3.5 text-primary" /> Every metric source-labeled

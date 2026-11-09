@@ -1,10 +1,10 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  CardsSkeleton, DataBadge, EmptyState, ErrorNote, SectionTitle, fmtMoney, fmtPct,
+  CardsSkeleton, ChartTooltip, DataBadge, EmptyState, ErrorNote, SectionTitle, fmtMoney, fmtPct,
 } from "@/components/adpilot/bits";
 import { pyFetch } from "@/lib/pyapi";
 import type { Analysis } from "@/lib/types";
@@ -64,10 +64,7 @@ export function AudienceView({ analysisId }: { analysisId: number | null }) {
                 <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" />
                 <XAxis dataKey="band" tick={{ fill: "#7c8db0", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
                 <YAxis tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} unit="%" width={40} />
-                <Tooltip
-                  contentStyle={{ background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: number) => [`${v}%`, "weight"]}
-                />
+                <ChartTooltip formatter={(v: number) => [`${v}%`, "weight"]} />
                 <Bar dataKey="weight" radius={[4, 4, 0, 0]}>
                   {ageData.map((_, i) => <Cell key={i} fill={AGE_COLORS[i % AGE_COLORS.length]} />)}
                 </Bar>

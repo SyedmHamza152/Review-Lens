@@ -46,7 +46,10 @@ function spawnBackend(): ChildProcess {
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   const out = fs.openSync(logFile, "a");
 
-  const venvPython = path.join(backendDir, ".venv", "bin", "python");
+  // Runtime-resolved path (spread keeps the bundler from tracing the venv
+  // symlink, which lives outside the project root).
+  const venvParts: string[] = [".venv", "bin", "python"];
+  const venvPython = path.join(backendDir, ...venvParts);
   const useVenv = fs.existsSync(venvPython);
   const cmd = useVenv ? venvPython : PYTHON;
 

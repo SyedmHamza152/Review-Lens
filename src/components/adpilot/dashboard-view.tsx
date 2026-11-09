@@ -3,18 +3,16 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  ResponsiveContainer, XAxis, YAxis,
 } from "recharts";
 import { Eye, MousePointerClick, PlayCircle, ShoppingBag, Target, TrendingUp, Wallet, Youtube } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  CardsSkeleton, DataBadge, EmptyState, ErrorNote, SectionTitle, formatColor,
+  CardsSkeleton, ChartTooltip, DataBadge, EmptyState, ErrorNote, SectionTitle, formatColor,
   fmtMoney, fmtNum, fmtPct,
 } from "@/components/adpilot/bits";
 import { pyFetch } from "@/lib/pyapi";
 import type { Analysis, Recommendation } from "@/lib/types";
-
-const TOOLTIP_STYLE = { background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 };
 
 interface DashboardResp {
   empty?: boolean;
@@ -133,8 +131,7 @@ export function DashboardView({ analysisId, backendOk }: { analysisId: number | 
                           <Cell key={d.key} fill={formatColor(d.key)} />
                         ))}
                       </Pie>
-                      <Tooltip
-                        contentStyle={TOOLTIP_STYLE}
+                      <ChartTooltip
                         formatter={(v: number, n: string) => [fmtMoney(v, dash.product?.currency), n]}
                       />
                     </PieChart>
@@ -170,8 +167,7 @@ export function DashboardView({ analysisId, backendOk }: { analysisId: number | 
                     <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" horizontal={false} />
                     <XAxis type="number" tick={{ fill: "#7c8db0", fontSize: 11 }} axisLine={{ stroke: "#1c2a44" }} tickLine={false} tickFormatter={(v) => fmtNum(v)} />
                     <YAxis type="category" dataKey="stage" width={92} tick={{ fill: "#c3cfe6", fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      contentStyle={TOOLTIP_STYLE}
+                    <ChartTooltip
                       formatter={(v: number) => [fmtNum(v, 1), "MODEL PREDICTION"]}
                       cursor={{ fill: "rgba(56,189,248,0.06)" }}
                     />

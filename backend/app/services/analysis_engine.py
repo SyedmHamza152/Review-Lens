@@ -186,7 +186,7 @@ def _run(db: Session, job_id: str) -> None:
     db.add(analysis)
     db.flush()
 
-    for v in videos[:15]:
+    for v in videos[:40]:
         db.add(ResearchVideo(analysis_id=analysis.id, **{k: v[k] for k in (
             "video_id", "title", "channel_id", "channel_title", "published_at",
             "thumbnail_url", "views", "likes", "comments", "duration_seconds",

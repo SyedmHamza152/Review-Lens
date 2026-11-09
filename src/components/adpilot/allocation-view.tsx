@@ -6,7 +6,7 @@ import { RefreshCw, Timer } from "lucide-react";
 import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
   PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer,
-  Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis,
+  Scatter, ScatterChart, XAxis, YAxis, ZAxis,
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,13 +15,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
-  CardsSkeleton, DataBadge, EmptyState, ErrorNote, SectionTitle, formatColor,
+  CardsSkeleton, ChartTooltip, DataBadge, EmptyState, ErrorNote, SectionTitle, formatColor,
   fmtMoney, fmtNum, fmtPct,
 } from "@/components/adpilot/bits";
 import { pyFetch } from "@/lib/pyapi";
 import type { DurationPlan, Recommendation } from "@/lib/types";
 
-const TOOLTIP_STYLE = { background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 };
 const CURVE_COLORS = ["#38bdf8", "#34d399", "#f59e0b"];
 
 export function AllocationView({ analysisId }: { analysisId: number | null }) {
@@ -221,7 +220,7 @@ export function AllocationView({ analysisId }: { analysisId: number | null }) {
                     />
                   ))}
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} />
+                  <ChartTooltip />
                 </RadarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -243,7 +242,7 @@ export function AllocationView({ analysisId }: { analysisId: number | null }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" horizontal={false} />
                   <XAxis type="number" tick={{ fill: "#7c8db0", fontSize: 10 }} axisLine={{ stroke: "#1c2a44" }} tickLine={false} />
                   <YAxis type="category" dataKey="name" width={150} tick={{ fill: "#c3cfe6", fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [v, "utility"]} cursor={{ fill: "rgba(56,189,248,0.06)" }} />
+                  <ChartTooltip formatter={(v: number) => [v, "utility"]} cursor={{ fill: "rgba(56,189,248,0.06)" }} />
                   <Bar dataKey="utility" radius={[0, 6, 6, 0]} barSize={30}>
                     {utilityData.map((d) => (
                       <Cell key={d.key} fill={formatColor(d.key)} />
@@ -273,7 +272,7 @@ export function AllocationView({ analysisId }: { analysisId: number | null }) {
               <XAxis dataKey="name" tick={{ fill: "#7c8db0", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
               <YAxis yAxisId="l" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={56} />
               <YAxis yAxisId="r" orientation="right" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} width={40} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} />
+              <ChartTooltip />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar yAxisId="l" dataKey="conversions" name="Conversions (MODEL PREDICTION)" radius={[4, 4, 0, 0]}>
                 {rec.allocations.map((a) => (
@@ -380,7 +379,7 @@ export function AllocationView({ analysisId }: { analysisId: number | null }) {
                           label={{ value: "seconds watched", position: "insideBottomRight", offset: -2, fill: "#7c8db0", fontSize: 10 }}
                         />
                         <YAxis domain={[0, 100]} tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} unit="%" width={48} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number) => [`${v}%`, "still watching"]} labelFormatter={(t) => `t = ${t}s`} />
+                        <ChartTooltip formatter={(v: number) => [`${v}%`, "still watching"]} labelFormatter={(t) => `t = ${t}s`} />
                         <Legend wrapperStyle={{ fontSize: 11 }} />
                         {plan.retention_curves.map((c, i) => {
                           const data = [...c.points];
@@ -424,7 +423,7 @@ export function AllocationView({ analysisId }: { analysisId: number | null }) {
                             <XAxis dataKey="bucket" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
                             <YAxis yAxisId="l" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} width={40} allowDecimals={false} />
                             <YAxis yAxisId="r" orientation="right" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} width={48} unit="%" />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} />
+                            <ChartTooltip />
                             <Legend wrapperStyle={{ fontSize: 11 }} />
                             <Bar yAxisId="l" dataKey="count" name="videos found" fill="#38bdf8" radius={[4, 4, 0, 0]} barSize={26} />
                             <Line
@@ -473,8 +472,7 @@ export function AllocationView({ analysisId }: { analysisId: number | null }) {
                               unit="%"
                             />
                             <ZAxis type="number" dataKey="views" range={[30, 220]} name="views" />
-                            <Tooltip
-                              contentStyle={TOOLTIP_STYLE}
+                            <ChartTooltip
                               formatter={(v: number, n) => [n === "engagement" ? `${v}%` : fmtNum(v), String(n)]}
                               labelFormatter={() => ""}
                             />
