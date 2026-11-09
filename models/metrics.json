@@ -1,0 +1,239 @@
+{
+  "targets": {
+    "ctr": {
+      "best_model": "gradient_boosting",
+      "metrics": {
+        "linear_regression": {
+          "mae": 0.0005533669117046251,
+          "rmse": 0.0007263181195208135,
+          "r2": 0.9756391438201674
+        },
+        "random_forest": {
+          "mae": 0.0005464040270782047,
+          "rmse": 0.0007314975764366772,
+          "r2": 0.9752904649442936
+        },
+        "gradient_boosting": {
+          "mae": 0.0005408137622681989,
+          "rmse": 0.0007159450559022138,
+          "r2": 0.9763300042953198
+        },
+        "xgboost": {
+          "mae": 0.0005429137020936672,
+          "rmse": 0.0007200412152581229,
+          "r2": 0.9760583816826522
+        }
+      },
+      "train_seconds": 2.07
+    },
+    "cpc": {
+      "best_model": "linear_regression",
+      "metrics": {
+        "linear_regression": {
+          "mae": 0.4490824959503791,
+          "rmse": 0.5825273214629673,
+          "r2": 0.9417977757817287
+        },
+        "random_forest": {
+          "mae": 0.4597051244763258,
+          "rmse": 0.596201424463537,
+          "r2": 0.9390332559807932
+        },
+        "gradient_boosting": {
+          "mae": 0.44903087301172107,
+          "rmse": 0.5833850446749589,
+          "r2": 0.9416262536936743
+        },
+        "xgboost": {
+          "mae": 0.4755695891804925,
+          "rmse": 0.6140190062854779,
+          "r2": 0.9353348019481627
+        }
+      },
+      "train_seconds": 2.38
+    },
+    "cvr": {
+      "best_model": "linear_regression",
+      "metrics": {
+        "linear_regression": {
+          "mae": 0.013467197047476927,
+          "rmse": 0.01717230795532785,
+          "r2": 0.025933780779041404
+        },
+        "random_forest": {
+          "mae": 0.013826416765242398,
+          "rmse": 0.017574057719275164,
+          "r2": -0.020176329615549715
+        },
+        "gradient_boosting": {
+          "mae": 0.013029671908194393,
+          "rmse": 0.01756684735981555,
+          "r2": -0.019339376741731806
+        },
+        "xgboost": {
+          "mae": 0.013203250116997448,
+          "rmse": 0.018119582222489206,
+          "r2": -0.08449487985336068
+        }
+      },
+      "train_seconds": 2.41
+    },
+    "cpa": {
+      "best_model": "gradient_boosting",
+      "metrics": {
+        "linear_regression": {
+          "mae": 148.4643394715377,
+          "rmse": 192.94362473221312,
+          "r2": 0.32811462357339927
+        },
+        "random_forest": {
+          "mae": 150.41894217359362,
+          "rmse": 195.2369866697697,
+          "r2": 0.312047402748564
+        },
+        "gradient_boosting": {
+          "mae": 147.99837529454587,
+          "rmse": 192.1186917769268,
+          "r2": 0.3338476506815682
+        },
+        "xgboost": {
+          "mae": 148.86475809574276,
+          "rmse": 202.55487114195842,
+          "r2": 0.25950913360016903
+        }
+      },
+      "train_seconds": 2.31
+    },
+    "roas": {
+      "best_model": "random_forest",
+      "metrics": {
+        "linear_regression": {
+          "mae": 7.2657955370976195,
+          "rmse": 10.18778340718903,
+          "r2": 0.03665779265810043
+        },
+        "random_forest": {
+          "mae": 7.244517414446804,
+          "rmse": 10.135684842415912,
+          "r2": 0.04648533140655631
+        },
+        "gradient_boosting": {
+          "mae": 7.106795505344113,
+          "rmse": 10.587542117280586,
+          "r2": -0.0404266886759963
+        },
+        "xgboost": {
+          "mae": 6.98239367176177,
+          "rmse": 10.529699786605038,
+          "r2": -0.029089531674828306
+        }
+      },
+      "train_seconds": 2.33
+    },
+    "conversions": {
+      "best_model": "linear_regression",
+      "metrics": {
+        "linear_regression": {
+          "mae": 0.5438655833097289,
+          "rmse": 0.7297690089201884,
+          "r2": 0.23527574647210991
+        },
+        "random_forest": {
+          "mae": 0.5647709571223101,
+          "rmse": 0.750382953668869,
+          "r2": 0.1914629025196174
+        },
+        "gradient_boosting": {
+          "mae": 0.5431768338136479,
+          "rmse": 0.7334247094062089,
+          "r2": 0.22759494630375643
+        },
+        "xgboost": {
+          "mae": 0.5557931835169762,
+          "rmse": 0.7702272042101079,
+          "r2": 0.14813310889224907
+        }
+      },
+      "train_seconds": 2.26
+    },
+    "revenue": {
+      "best_model": "gradient_boosting",
+      "metrics": {
+        "linear_regression": {
+          "mae": 3031.7715773275395,
+          "rmse": 4631.595540214366,
+          "r2": 0.1784045964539862
+        },
+        "random_forest": {
+          "mae": 3057.9492045109337,
+          "rmse": 4713.60222579385,
+          "r2": 0.14905281244904345
+        },
+        "gradient_boosting": {
+          "mae": 2953.2837231503813,
+          "rmse": 4617.550368525513,
+          "r2": 0.1833799669885563
+        },
+        "xgboost": {
+          "mae": 3000.3429008376256,
+          "rmse": 4818.494068193547,
+          "r2": 0.11075915205031273
+        }
+      },
+      "train_seconds": 2.3
+    },
+    "video_views": {
+      "best_model": "gradient_boosting",
+      "metrics": {
+        "linear_regression": {
+          "mae": 143.00850392193175,
+          "rmse": 205.61311056761204,
+          "r2": 0.9003690564218383
+        },
+        "random_forest": {
+          "mae": 73.0593475925648,
+          "rmse": 108.04460104793566,
+          "r2": 0.9724894813991534
+        },
+        "gradient_boosting": {
+          "mae": 73.50662334011744,
+          "rmse": 106.34037516600935,
+          "r2": 0.9733505031862933
+        },
+        "xgboost": {
+          "mae": 73.97543414963616,
+          "rmse": 108.86383939835402,
+          "r2": 0.9720707077338187
+        }
+      },
+      "train_seconds": 2.19
+    }
+  },
+  "trained_on": "synthetic",
+  "rows_train": 5760,
+  "rows_test": 1440,
+  "feature_names": [
+    "ad_format",
+    "marketing_objective",
+    "category",
+    "budget_share",
+    "audience_age_index",
+    "device_mobile_share",
+    "month",
+    "day_of_week"
+  ],
+  "meta": {
+    "n_candidates": 4,
+    "split": "chronological 80/20 by month",
+    "features": [
+      "ad_format",
+      "marketing_objective",
+      "category",
+      "budget_share",
+      "audience_age_index",
+      "device_mobile_share",
+      "month",
+      "day_of_week"
+    ]
+  }
+}

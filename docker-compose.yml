@@ -1,0 +1,81 @@
+version: "3.9"
+
+# AdPilot AI — full local stack (optional). The app also runs zero-config with
+# SQLite + the inline task queue: backend/.venv + uvicorn only.
+#
+#   docker compose up -d postgres redis
+#   docker compose --profile worker up -d   # adds the Celery worker (TASK_QUEUE=celery)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: adpilot
+      POSTGRES_PASSWORD: adpilot
+      POSTGRES_DB: adpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adpilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      SQLALCHEMY_DATABASE_URL: postgresql+psycopg://adpilot:adpilot@postgres:5432/adpilot
+      TASK_QUEUE: inline
+      BACKEND_PORT: "8321"
+    env_file:
+      - .env.example   # copy to .env and fill in real credentials
+    ports:
+      - "8321:8321"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./models:/models
+
+  worker:
+    profiles: ["worker"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      SQLALCHEMY_DATABASE_URL: postgresql+psycopg://adpilot:adpilot@postgres:5432/adpilot
+      TASK_QUEUE: celery
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info"]
+    depends_on:
+      - redis
+      - postgres
+
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- -p 3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8321
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:

@@ -1,0 +1,9 @@
+{
+  "name": "adpilot-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AdPilot AI FastAPI backend launcher (started automatically by the sandbox dev script)",
+  "scripts": {
+    "dev": "bash dev.sh"
+  }
+}
