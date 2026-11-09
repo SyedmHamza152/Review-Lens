@@ -3,20 +3,21 @@
 import { useQuery } from "@tanstack/react-query";
 import * as React from "react";
 import {
-  Area, AreaChart, Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line,
+  LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  CardsSkeleton, DataBadge, EmptyState, ErrorNote, SectionTitle,
+  CardsSkeleton, DataBadge, EmptyState, ErrorNote, SectionTitle, formatColor,
   fmtMoney, fmtNum, fmtPctRaw,
 } from "@/components/adpilot/bits";
 import { pyFetch } from "@/lib/pyapi";
 import type { Analytics } from "@/lib/types";
 
 const TOOLTIP_STYLE = { background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 };
+const SEGMENT_COLORS = ["#38bdf8", "#34d399", "#f59e0b", "#a78bfa", "#fb7185", "#22d3ee", "#facc15", "#4ade80", "#f472b6", "#94a3b8"];
 
 export function CampaignsView() {
   const [days, setDays] = React.useState(90);
@@ -92,6 +93,7 @@ export function CampaignsView() {
             <TabsList>
               <TabsTrigger value="trend">Trend</TabsTrigger>
               <TabsTrigger value="formats">By format</TabsTrigger>
+              <TabsTrigger value="reach">Reach &amp; devices</TabsTrigger>
               <TabsTrigger value="table">Campaigns</TabsTrigger>
             </TabsList>
 
@@ -122,25 +124,127 @@ export function CampaignsView() {
             </TabsContent>
 
             <TabsContent value="formats">
-              <Card>
-                <CardHeader className="pb-2">
-                  <SectionTitle title="Performance by format" label={data.data_source_label} />
-                </CardHeader>
-                <CardContent className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={fmtRows}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" />
-                      <XAxis dataKey="format_key" tick={{ fill: "#7c8db0", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
-                      <YAxis yAxisId="l" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={56} />
-                      <YAxis yAxisId="r" orientation="right" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} width={44} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar yAxisId="l" dataKey="impressions" name="Impressions" fill="#38bdf8" radius={[4, 4, 0, 0]} />
-                      <Bar yAxisId="r" dataKey="roas" name="ROAS (×)" fill="#34d399" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <SectionTitle title="Performance by format" label={data.data_source_label} />
+                  </CardHeader>
+                  <CardContent className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={fmtRows}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" />
+                        <XAxis dataKey="format_key" tick={{ fill: "#7c8db0", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
+                        <YAxis yAxisId="l" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={56} />
+                        <YAxis yAxisId="r" orientation="right" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} width={44} />
+                        <Tooltip contentStyle={TOOLTIP_STYLE} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar yAxisId="l" dataKey="impressions" name="Impressions" radius={[4, 4, 0, 0]}>
+                          {fmtRows.map((f) => (
+                            <Cell key={f.format_key} fill={formatColor(f.format_key)} />
+                          ))}
+                        </Bar>
+                        <Bar yAxisId="r" dataKey="roas" name="ROAS (×)" fill="#34d399" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <SectionTitle title="Cost vs CPA by format" label={data.data_source_label} />
+                  </CardHeader>
+                  <CardContent className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={fmtRows}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" />
+                        <XAxis dataKey="format_key" tick={{ fill: "#7c8db0", fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
+                        <YAxis yAxisId="l" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={56} />
+                        <YAxis yAxisId="r" orientation="right" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} width={44} />
+                        <Tooltip contentStyle={TOOLTIP_STYLE} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar yAxisId="l" dataKey="cost" name="Cost" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={30} />
+                        <Line yAxisId="r" type="monotone" dataKey="cpa" name="CPA" stroke="#fb7185" strokeWidth={2} dot={{ r: 4 }} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="reach">
+              <div className="grid gap-4 lg:grid-cols-3">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <SectionTitle title="Devices" label={data.data_source_label} />
+                  </CardHeader>
+                  <CardContent className="h-64">
+                    {(data.by_device ?? []).length ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={(data.by_device ?? []).map((d) => ({ name: String(d.device), value: Number(d.impressions) }))}
+                            dataKey="value" nameKey="name" innerRadius={45} outerRadius={80} paddingAngle={3} strokeWidth={0}
+                          >
+                            {(data.by_device ?? []).map((_, i) => (
+                              <Cell key={i} fill={SEGMENT_COLORS[i % SEGMENT_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: number, n) => [fmtNum(v), `${n} impressions`]} />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <EmptyState title="No device breakdown" hint="Not available in the current data rows." />
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <SectionTitle title="Top cities by cost" label={data.data_source_label} />
+                  </CardHeader>
+                  <CardContent className="h-64">
+                    {(data.by_city ?? []).length ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={(data.by_city ?? []).map((d) => ({ city: String(d.city), cost: Math.round(Number(d.cost)) }))}
+                          layout="vertical" margin={{ left: 8, right: 16 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" horizontal={false} />
+                          <XAxis type="number" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} tickFormatter={(v) => fmtNum(v)} />
+                          <YAxis type="category" dataKey="city" width={82} tick={{ fill: "#c3cfe6", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <Tooltip contentStyle={TOOLTIP_STYLE} />
+                          <Bar dataKey="cost" name="Cost" fill="#a78bfa" radius={[0, 5, 5, 0]} barSize={14} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <EmptyState title="No city breakdown" hint="Not available in the current data rows." />
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <SectionTitle title="Age bands by clicks" label={data.data_source_label} />
+                  </CardHeader>
+                  <CardContent className="h-64">
+                    {(data.by_age ?? []).length ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={(data.by_age ?? []).map((d) => ({ age: String(d.age_group), clicks: Number(d.clicks) }))}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" />
+                          <XAxis dataKey="age" tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={{ stroke: "#1c2a44" }} />
+                          <YAxis tick={{ fill: "#7c8db0", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => fmtNum(v)} width={52} />
+                          <Tooltip contentStyle={TOOLTIP_STYLE} />
+                          <Bar dataKey="clicks" name="Clicks" radius={[4, 4, 0, 0]}>
+                            {(data.by_age ?? []).map((_, i) => (
+                              <Cell key={i} fill={SEGMENT_COLORS[i % SEGMENT_COLORS.length]} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <EmptyState title="No age breakdown" hint="Not available in the current data rows." />
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             <TabsContent value="table">

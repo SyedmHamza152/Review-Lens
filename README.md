@@ -61,11 +61,54 @@ FastAPI (backend/app)
    channel stats (quota-tracked, cached, backoff). Clearly organic metrics only.
 5. **Fetching advertising history** — *live* Google Ads GAQL sync (VIDEO channel
    only) when connected; otherwise the labeled **synthetic demo history** (12
-   campaigns × 180 days) is used and never mixed with live data.
+   campaigns × 180 days) is used and never mixed with live data. The synthetic
+   rows are **product-aware**: engagement rates are modulated by the product
+   category's documented format affinities (±20%, `optimizer_service._modulate_synthetic`),
+   so a fashion product's simulated Shorts history genuinely differs from an
+   electronics one — while every row keeps its `SYNTHETIC DEMO DATA` label.
 6. **Analyzing campaign performance** — metrics engine (CTR/CPC/CPA/CVR/ROAS/CPV/
    view-rate, zero-safe) + ML predictions from the trained registry.
 7. **Running optimization** — SLSQP constrained allocation + UCB exploration bonus +
    largest-remainder rounding so allocations sum to *exactly* the budget.
+
+### How the optimizer avoids a default winner (no structural in-stream bias)
+
+The utility per format is **objective-aligned** (engine `_value_rate`):
+
+| Objective | Utility unit | Typical winner |
+|---|---|---|
+| Video Views / Brand Awareness | video views per PKR | **Shorts** (cheapest engaged views) |
+| Website Traffic | clicks per PKR | **In-Feed** (deliberate thumbnail clicks) |
+| Leads / Sales | revenue per PKR | In-Feed / In-Stream by category demo-need |
+
+On top of the evidence-based funnel rates, four *centered* fit multipliers
+(mean ≈ 1.0, no hidden push) shape the allocation:
+
+- **audience fit** — young audiences push Shorts up / In-Stream down; older audiences the reverse;
+- **objective fit** — a *different* format leads for each objective (`knowledge.FORMAT_OBJECTIVE_FIT`);
+- **category fit** — per-category affinities (fashion/food → Shorts; education/software → In-Feed; sports/home/automotive → In-Stream);
+- **research fit** — *LIVE* signal from the product's real YouTube niche: Shorts-share of top public videos and short-vs-long engagement advantage (`optimizer_service.research_fit_for`).
+
+A regression test (`test_no_structural_in_stream_bias`) fails the suite if any
+format ever wins everywhere. Per-format share bounds (balanced: 8–55%) keep
+every plan diversified.
+
+### Ad duration intelligence — "how many seconds should my ad be?"
+
+`app/services/duration_engine.py` + `GET /api/v1/analyses/{id}/durations`
+recommend the best creative length **per format and objective** (6s bumper,
+15s/20s/30s/60s+ in-stream, ≤15s/16–30s/31–60s Shorts, 15–30s/31–60s/61–90s
+in-feed). Scoring layers:
+
+1. documented creative priors per objective (Google creative guidance);
+2. context adjustments — audience age mix, category demo-need, budget band;
+3. **LIVE evidence** — real public videos of this product bucketed by length;
+   buckets with above-average engagement nudge overlapping durations
+   (`engagement_index`, labeled `LIVE DATA`).
+
+The UI shows per-format best/alternative durations, expected hold-rate bars,
+predicted audience-retention curves (`MODEL PREDICTION` shapes), and the real
+bucket statistics + a duration-vs-engagement scatter of the live research rows.
 
 ---
 

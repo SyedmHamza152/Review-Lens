@@ -126,6 +126,12 @@ export interface Allocation {
   };
   confidence: number;
   reason: string;
+  fit_factors?: {
+    audience: number;
+    objective: number;
+    category: number;
+    research: number;
+  };
 }
 
 export interface Recommendation {
@@ -176,6 +182,9 @@ export interface Analytics {
   totals: Record<string, number | null>;
   series: AnalyticsPoint[];
   by_format: Array<Record<string, number | string | null> & { format_key: string }>;
+  by_device?: Array<Record<string, number | string | null> & { device: string }>;
+  by_city?: Array<Record<string, number | string | null> & { city: string }>;
+  by_age?: Array<Record<string, number | string | null> & { age_group: string }>;
   campaigns: Array<{
     campaign_id: number;
     name: string;
@@ -184,6 +193,59 @@ export interface Analytics {
     data_source_label: string;
     metrics: Record<string, number | null>;
   }>;
+}
+
+/* ----------------------------- duration intelligence ---------------------- */
+export interface DurationOptionScore {
+  duration_key: string;
+  label: string;
+  seconds: number;
+  seconds_label: string;
+  non_skippable: boolean;
+  note: string;
+  score: number;
+  expected_hold_rate: number;
+  live_adjustment: string;
+}
+
+export interface DurationRec {
+  format_key: string;
+  format_label: string;
+  best: DurationOptionScore;
+  alternatives: DurationOptionScore[];
+  all: DurationOptionScore[];
+}
+
+export interface RetentionCurve {
+  format_key: string;
+  format_label: string;
+  duration_key: string;
+  label: string;
+  seconds: number;
+  points: Array<{ t: number; held: number }>;
+}
+
+export interface DurationPlan {
+  analysis_id: number;
+  objective: string;
+  data_source_label: string;
+  recommendations: DurationRec[];
+  overall_best: (DurationOptionScore & { format_key: string; format_label: string; reason: string }) | null;
+  retention_curves: RetentionCurve[];
+  live_research: {
+    label: string;
+    videos_used: number;
+    note: string;
+    buckets: Array<{
+      bucket: string;
+      count: number;
+      median_views: number;
+      median_engagement: number;
+      engagement_index: number | null;
+    }>;
+    scatter: Array<{ seconds: number; engagement_rate: number; views: number; title: string }>;
+  };
+  methodology: string;
 }
 
 export interface MlModelInfo {

@@ -54,7 +54,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Youth sports", "School sports", "Durability reviews"],
                  "Buy for children; value durability and safety certifications."),
         ],
-        format_affinity={"in_stream": 1.25, "shorts": 1.10, "in_feed": 0.85},
+        format_affinity={"in_stream": 1.22, "shorts": 1.10, "in_feed": 0.85},
         objective_bias="Sales / Conversions",
         notes="Equipment buyers watch demo/review videos before purchase; long-form in-stream demos and Shorts skill clips both perform.",
     ),
@@ -77,7 +77,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Best budget picks", "Deals", "Long-term reviews"],
                  "Price-to-performance driven; respond to comparison content."),
         ],
-        format_affinity={"in_stream": 1.20, "shorts": 1.15, "in_feed": 0.95},
+        format_affinity={"in_stream": 1.15, "shorts": 1.15, "in_feed": 0.95},
         objective_bias="Sales / Conversions",
         notes="High consideration cycle; review-style in-stream ads and Shorts comparisons shorten decision time.",
     ),
@@ -158,7 +158,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Beginner workouts", "Home training", "Diet plans"],
                  "Seek guidance; transformation content builds trust."),
         ],
-        format_affinity={"in_stream": 1.15, "shorts": 1.20, "in_feed": 0.85},
+        format_affinity={"in_stream": 1.12, "shorts": 1.22, "in_feed": 0.85},
         objective_bias="Leads",
     ),
     CategoryProfile(
@@ -176,7 +176,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Home demos", "Cleaning hacks", "Space saving"],
                  "Watch demos; value durability and warranties."),
         ],
-        format_affinity={"in_stream": 1.20, "shorts": 1.05, "in_feed": 0.95},
+        format_affinity={"in_stream": 1.18, "shorts": 1.05, "in_feed": 0.95},
         objective_bias="Sales / Conversions",
     ),
     CategoryProfile(
@@ -197,7 +197,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Freelancing courses", "AI skills", "Certification"],
                  "Respond to lead forms and free-trial offers."),
         ],
-        format_affinity={"in_stream": 1.15, "shorts": 0.95, "in_feed": 1.10},
+        format_affinity={"in_stream": 1.05, "shorts": 0.95, "in_feed": 1.20},
         objective_bias="Leads",
     ),
     CategoryProfile(
@@ -215,7 +215,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Baby care tips", "Safety reviews", "Parenting vlogs"],
                  "Safety and reviews dominate the decision; trust content matters."),
         ],
-        format_affinity={"in_stream": 1.10, "shorts": 1.00, "in_feed": 1.00},
+        format_affinity={"in_stream": 1.08, "shorts": 1.00, "in_feed": 1.02},
         objective_bias="Sales / Conversions",
     ),
     CategoryProfile(
@@ -233,7 +233,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Reviews", "Modifications", "Test rides"],
                  "Video-heavy researchers; in-stream reviews + Shorts clips."),
         ],
-        format_affinity={"in_stream": 1.25, "shorts": 1.15, "in_feed": 0.80},
+        format_affinity={"in_stream": 1.22, "shorts": 1.12, "in_feed": 0.82},
         objective_bias="Website Traffic",
     ),
     CategoryProfile(
@@ -255,7 +255,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Gift ideas", "Anniversary"],
                  "Seasonal gifting; in-feed discovery + retargeting."),
         ],
-        format_affinity={"in_stream": 1.10, "shorts": 1.05, "in_feed": 1.05},
+        format_affinity={"in_stream": 1.05, "shorts": 1.00, "in_feed": 1.10},
         objective_bias="Sales / Conversions",
     ),
     CategoryProfile(
@@ -273,7 +273,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Productivity tools", "Automation", "Case studies"],
                  "Free trial/demo funnels; lead objective with retargeting."),
         ],
-        format_affinity={"in_stream": 1.15, "shorts": 0.90, "in_feed": 1.15},
+        format_affinity={"in_stream": 1.10, "shorts": 0.90, "in_feed": 1.20},
         objective_bias="Leads",
     ),
     CategoryProfile(
@@ -291,7 +291,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Near me", "Reviews and testimonials"],
                  "Need trust signals quickly; call/lead actions convert."),
         ],
-        format_affinity={"in_stream": 1.05, "shorts": 1.00, "in_feed": 1.10},
+        format_affinity={"in_stream": 1.05, "shorts": 0.98, "in_feed": 1.15},
         objective_bias="Leads",
     ),
     CategoryProfile(
@@ -325,7 +325,7 @@ CATEGORY_PROFILES: list[CategoryProfile] = [
                  ["Product reviews", "Deals", "How-to"],
                  "Generic profile used when the product cannot be classified confidently."),
         ],
-        format_affinity={"in_stream": 1.10, "shorts": 1.05, "in_feed": 0.95},
+        format_affinity={"in_stream": 1.00, "shorts": 1.00, "in_feed": 1.00},
         objective_bias="Sales / Conversions",
         notes="Fallback profile — confidence is reduced and the user is asked to review inferred assumptions.",
     ),
@@ -344,11 +344,18 @@ OBJECTIVE_DECISION_RULES: list[dict] = [
      "rationale": "Impulse categories gain cheap, engaged video views that later convert through remarketing."},
 ]
 
+# format -> objective -> multiplier (documented heuristic priors).
+# Deliberately NON-uniform: every objective has a different best format, which
+# mirrors YouTube platform behaviour instead of a single default winner:
+#   Brand Awareness      -> in-stream (TV-like brand lift), Shorts close second
+#   Video Views          -> Shorts (cheapest incremental views on YouTube)
+#   Website Traffic      -> in-feed (a deliberate thumbnail click is traffic-intent)
+#   Leads                -> in-feed + in-stream (considered actions), Shorts weakest
+#   Sales / Conversions  -> in-feed / in-stream product demos, Shorts mid-funnel
 FORMAT_OBJECTIVE_FIT: dict[str, dict[str, float]] = {
-    # format -> objective -> multiplier (documented heuristic priors)
-    "in_stream": {"Brand Awareness": 1.20, "Video Views": 1.10, "Website Traffic": 1.00, "Leads": 1.05, "Sales / Conversions": 1.10},
-    "shorts": {"Brand Awareness": 1.15, "Video Views": 1.25, "Website Traffic": 1.05, "Leads": 0.90, "Sales / Conversions": 0.95},
-    "in_feed": {"Brand Awareness": 0.85, "Video Views": 0.95, "Website Traffic": 1.10, "Leads": 1.05, "Sales / Conversions": 1.05},
+    "in_stream": {"Brand Awareness": 1.18, "Video Views": 0.95, "Website Traffic": 0.92, "Leads": 1.08, "Sales / Conversions": 1.06},
+    "shorts":    {"Brand Awareness": 1.10, "Video Views": 1.22, "Website Traffic": 0.98, "Leads": 0.82, "Sales / Conversions": 0.90},
+    "in_feed":   {"Brand Awareness": 0.80, "Video Views": 0.90, "Website Traffic": 1.15, "Leads": 1.12, "Sales / Conversions": 1.12},
 }
 
 

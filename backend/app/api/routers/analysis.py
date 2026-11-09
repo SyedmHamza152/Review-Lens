@@ -129,6 +129,19 @@ def _analysis_payload(db: Session, a: ProductAnalysis) -> dict:
     }
 
 
+@router.get("/analyses/{analysis_id}/durations")
+def duration_plan(analysis_id: int, db: Session = Depends(get_db)):
+    """Ad-duration intelligence: which creative length holds attention best,
+    per format, with retention curves and REAL public-video engagement by
+    duration bucket (LIVE DATA) when research rows exist."""
+    from app.services.duration_engine import compute_duration_plan
+
+    a = db.get(ProductAnalysis, analysis_id)
+    if not a:
+        raise HTTPException(404, "analysis not found")
+    return compute_duration_plan(db, a)
+
+
 @router.get("/analyses/{analysis_id}/recommendation")
 def get_recommendation(analysis_id: int, db: Session = Depends(get_db)):
     rec = analysis_engine.latest_recommendation(db, analysis_id)
@@ -173,6 +186,7 @@ def dashboard(analysis_id: int | None = None, db: Session = Depends(get_db)):
         return {"empty": True,
                 "message": "No analysis yet. Submit a product to populate the dashboard."}
     rec = analysis_engine.latest_recommendation(db, a.id)
+    research = a.competitor_summary or {}
     return {
         "analysis_id": a.id,
         "product": {"name": a.product.name, "budget": a.product.total_budget,
@@ -191,6 +205,15 @@ def dashboard(analysis_id: int | None = None, db: Session = Depends(get_db)):
         "cold_start": rec.cold_start if rec else True,
         "ads_history_status": a.ads_history_status,
         "youtube_research_status": a.youtube_research_status,
+        "research": {
+            "videos_found": research.get("videos_found", 0),
+            "total_views": research.get("total_views", 0),
+            "median_views": research.get("median_views", 0),
+            "shorts_share": research.get("shorts_share", 0),
+            "avg_engagement_rate": research.get("avg_engagement_rate", 0),
+            "top_channels": research.get("top_channels", []),
+            "is_live": a.youtube_research_status == "live",
+        },
     }
 
 
@@ -212,6 +235,9 @@ def campaigns_analytics(days: int = Query(90, ge=7, le=365), format_key: str | N
     daily: dict[str, MetricSet] = {}
     per_campaign: dict[int, dict] = {}
     by_format: dict[str, MetricSet] = {}
+    by_device: dict[str, MetricSet] = {}
+    by_city: dict[str, MetricSet] = {}
+    by_age: dict[str, MetricSet] = {}
     for p, c in rows:
         ms = MetricSet(impressions=p.impressions, clicks=p.clicks, cost=p.cost_micros / 1e6,
                        conversions=p.conversions, conversion_value=p.conversion_value,
@@ -223,6 +249,12 @@ def campaigns_analytics(days: int = Query(90, ge=7, le=365), format_key: str | N
             "status": c.status, "metrics": MetricSet(), "data_source_label": c.data_source_label})
         bucket["metrics"] = merge_metric_sets([bucket["metrics"], ms])
         by_format[c.format_key] = merge_metric_sets([by_format[c.format_key], ms]) if c.format_key in by_format else ms
+        if p.device:
+            by_device[p.device] = merge_metric_sets([by_device[p.device], ms]) if p.device in by_device else ms
+        if p.city:
+            by_city[p.city] = merge_metric_sets([by_city[p.city], ms]) if p.city in by_city else ms
+        if p.age_group:
+            by_age[p.age_group] = merge_metric_sets([by_age[p.age_group], ms]) if p.age_group in by_age else ms
 
     label = "LIVE DATA" if rows and rows[0][1].data_source_label == "LIVE DATA" else (
         "SYNTHETIC DEMO DATA" if rows else "NO DATA")
@@ -237,6 +269,10 @@ def campaigns_analytics(days: int = Query(90, ge=7, le=365), format_key: str | N
         "totals": merge_metric_sets(list(daily.values())).to_dict() if daily else {},
         "series": [{"date": k, **v.to_dict()} for k, v in sorted(daily.items())],
         "by_format": [{"format_key": k, **v.to_dict()} for k, v in by_format.items()],
+        "by_device": [{"device": k, **v.to_dict()} for k, v in by_device.items()],
+        "by_city": sorted([{"city": k, **v.to_dict()} for k, v in by_city.items()],
+                          key=lambda d: d["cost"], reverse=True)[:10],
+        "by_age": [{"age_group": k, **v.to_dict()} for k, v in by_age.items()],
         "campaigns": sorted(campaigns_out, key=lambda c: c["metrics"]["cost"], reverse=True)[:30],
     }
 

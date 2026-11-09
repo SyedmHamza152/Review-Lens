@@ -19,6 +19,7 @@ from app.core.constants import SUPPORTED_FORMATS
 from app.models.analysis import ProductAnalysis
 from app.models.campaign import Campaign, CampaignPerformance
 from app.models.recommendation import BudgetRecommendation, OptimizationRun
+from app.models.research import ResearchVideo
 from app.optimization import engine as opt_engine
 from app.optimization.coldstart import AOV_BY_BAND, FORMAT_PRIORS
 from app.services.knowledge import FORMAT_OBJECTIVE_FIT  # re-exported from knowledge
@@ -31,7 +32,13 @@ MIN_SAMPLE_FOR_TRUST = 30_000     # below this, priors dominate
 
 
 def historical_metrics_by_format(db: Session, analysis: ProductAnalysis) -> dict[str, dict]:
-    """Aggregate stored campaign performance per format (demo or live)."""
+    """Aggregate stored campaign performance per format (demo or live).
+
+    SYNTHETIC rows are additionally modulated by the product's category
+    profile (documented, see `_modulate_synthetic`): a fashion product's
+    simulated Shorts history differs from an electronics product's. LIVE rows
+    are NEVER touched — they pass through unmodified.
+    """
     from app.services.metrics import MetricSet, merge_metric_sets
 
     rows = db.execute(
@@ -57,12 +64,46 @@ def historical_metrics_by_format(db: Session, analysis: ProductAnalysis) -> dict
     out: dict[str, dict] = {}
     for key, sets in by_format.items():
         merged = merge_metric_sets(sets)
+        if merged.source != "live":
+            merged = _modulate_synthetic(merged, key, analysis)
         out[key] = {
             "metrics": merged.to_dict(),
             "sample_size": int(merged.impressions),
             "source": merged.source,
         }
     return out
+
+
+def _modulate_synthetic(ms, format_key: str, analysis: ProductAnalysis):
+    """Make SIMULATED history product-aware (SYNTHETIC rows only).
+
+    The static demo fixture would otherwise give every product identical
+    "history" and identical charts. Each category profile carries documented
+    format affinities; we modulate the synthetic engagement rates by the
+    product's relative affinity for this format so a fashion product's
+    simulated Shorts history genuinely differs from an electronics one.
+
+    Modulation: rate_adjust = 0.80 + 0.40 × (affinity / mean_affinity),
+    i.e. ±20% around 1.0 — applied to CTR and CVR only (costs follow the
+    market, not the product). LIVE DATA never passes through here.
+    """
+    from app.services.knowledge import classify_category
+
+    text = f"{analysis.product.name} {analysis.product.description}"  # type: ignore[union-attr]
+    profile, _ = classify_category(text)
+    affs = profile.format_affinity or {format_key: 1.0}
+    mean_aff = sum(affs.values()) / max(len(affs), 1)
+    rel = affs.get(format_key, 1.0) / (mean_aff or 1.0)
+    factor = 0.80 + 0.40 * rel
+
+    # CTR ×= factor  → clicks ×= factor
+    # CVR ×= factor  → conversions = clicks_new × cvr_new = conversions × factor²
+    # conversion_value ×= factor² keeps the AOV unchanged
+    ms.clicks *= factor
+    ms.conversions *= factor * factor
+    ms.conversion_value *= factor * factor
+    ms.extras["synthetic_modulation"] = round(factor, 3)
+    return ms
 
 
 def _blend(prior: float, historical: float | None, ml_value: float | None,
@@ -86,6 +127,7 @@ def build_format_scores(
     analysis: ProductAnalysis,
     history: dict[str, dict],
     ml_predictor=None,
+    research_videos: list[dict] | None = None,
 ) -> list[opt_engine.FormatScore]:
     from app.services.knowledge import classify_category
 
@@ -144,15 +186,18 @@ def build_format_scores(
         elif prior.aov_factor != 1.0:
             aov_eff = aov * prior.aov_factor
 
-        # audience fit: young audiences favor Shorts, mixed favor in-stream
+        # audience fit: centered at 1.0 so NO format is structurally favored —
+        # young audiences favor Shorts, older/skewed audiences favor in-stream,
+        # in-feed stays near-neutral (deliberate thumbnail intent).
         if key == "shorts":
-            audience_fit = 0.70 + 0.70 * young_share
+            audience_fit = 0.75 + 0.55 * young_share        # 0.75 .. 1.30
         elif key == "in_stream":
-            audience_fit = 1.25 - 0.25 * young_share
+            audience_fit = 1.20 - 0.30 * young_share        # 0.90 .. 1.20
         else:
-            audience_fit = 1.00
+            audience_fit = 1.05 - 0.10 * young_share        # 0.95 .. 1.05
         objective_fit = FORMAT_OBJECTIVE_FIT[key].get(objective, 1.0)
         category_fit = profile.format_affinity.get(key, 1.0)
+        research_fit, research_note = research_fit_for(key, research_videos)
 
         risk = prior.risk * (1.0 - min(n_hist / 200_000.0, 0.5) * 0.6)
         if ml_funnel:
@@ -174,6 +219,8 @@ def build_format_scores(
             )
         if ml_funnel:
             evidence.append("ML model prediction blended in")
+        if research_note:
+            evidence.append(research_note)
         if not evidence:
             evidence.append("cold-start priors (documented assumptions)")
 
@@ -186,9 +233,11 @@ def build_format_scores(
             click_rate=round(click_rate, 5),
             cvr=round(cvr, 5),
             aov=round(aov_eff, 2),
+            objective=objective,
             audience_fit=round(audience_fit, 3),
             objective_fit=round(objective_fit, 3),
             category_fit=round(category_fit, 3),
+            research_fit=round(research_fit, 3),
             risk=round(risk, 3),
             sample_size=int(n_hist),
             confidence=confidence,
@@ -196,6 +245,58 @@ def build_format_scores(
             evidence=evidence,
         ))
     return scores
+
+
+def research_fit_for(format_key: str, videos: list[dict] | None) -> tuple[float, str]:
+    """Live-niche multiplier from REAL YouTube research rows (or neutral 1.0).
+
+    Signals used (organic public data, LIVE DATA label):
+      * shorts_share  — share of top public videos that are Shorts-length (<=65s)
+      * short-form engagement advantage — median engagement of short videos vs long
+    Normalized across formats so the mean multiplier stays 1.0 (no hidden push).
+    """
+    if not videos:
+        return 1.0, ""
+    usable = [v for v in videos if (v.get("views") or 0) > 0 and v.get("duration_seconds", 0) > 0]
+    if len(usable) < 5:
+        return 1.0, ""  # too few live rows to justify a signal
+
+    n = len(usable)
+    shorts_rows = [v for v in usable if v["duration_seconds"] <= 65]
+    long_rows = [v for v in usable if v["duration_seconds"] > 65]
+    shorts_share = len(shorts_rows) / n
+
+    def _med_eng(rows: list[dict]) -> float | None:
+        vals = sorted((v.get("engagement_rate") or 0.0) for v in rows)
+        if not vals or max(vals) <= 0:
+            return None
+        m = vals[len(vals) // 2] if len(vals) % 2 else (vals[len(vals) // 2 - 1] + vals[len(vals) // 2]) / 2
+        return m
+
+    eng_short = _med_eng(shorts_rows)
+    eng_long = _med_eng(long_rows)
+    # advantage in [-1, 1]: +1 short-form engagement dominates, -1 long-form dominates
+    advantage = 0.0
+    if eng_short is not None and eng_long:
+        advantage = max(-1.0, min(1.0, (eng_short - eng_long) / max(eng_long, 1e-9)))
+    elif eng_short is not None and not long_rows:
+        # niche is entirely short-form — moderate positive signal for Shorts
+        advantage = 0.5
+
+    raw = {
+        "shorts": 0.92 + 0.40 * shorts_share + 0.18 * advantage,
+        "in_stream": 1.06 - 0.30 * shorts_share - 0.12 * advantage,
+        "in_feed": 1.02 - 0.10 * shorts_share,
+    }
+    mean = sum(raw.values()) / 3.0
+    fit = raw[format_key] / mean
+
+    bits = [f"live niche signal: {shorts_share * 100:.0f}% of {n} top public videos are Shorts-length"]
+    if advantage != 0.0:
+        direction = "above" if advantage > 0 else "below"
+        bits.append(f"short-form engagement {abs(advantage) * 100:.0f}% {direction} long-form")
+    note = ", ".join(bits) + " (LIVE DATA)"
+    return fit, note
 
 
 def _ctr_of_views(hist_m: dict) -> float | None:
@@ -224,7 +325,18 @@ def run_optimization(
 
     history = historical_metrics_by_format(db, analysis)
     cold_start = not history or all(h["sample_size"] < MIN_SAMPLE_FOR_TRUST for h in history.values())
-    scores = build_format_scores(analysis, history, ml_predictor)
+    research_rows = [
+        {
+            "views": v.views,
+            "duration_seconds": v.duration_seconds,
+            "engagement_rate": v.engagement_rate,
+            "title": v.title,
+        }
+        for v in db.execute(
+            select(ResearchVideo).where(ResearchVideo.analysis_id == analysis.id)
+        ).scalars().all()
+    ] if analysis.youtube_research_status == "live" else []
+    scores = build_format_scores(analysis, history, ml_predictor, research_videos=research_rows)
 
     result = opt_engine.optimize_budget(
         total_budget=total_budget,
@@ -255,6 +367,7 @@ def run_optimization(
                 "predicted": a.predicted,
                 "confidence": a.confidence,
                 "reason": a.reason,
+                "fit_factors": a.fit_factors,
             }
             for a in result.allocations
         ],

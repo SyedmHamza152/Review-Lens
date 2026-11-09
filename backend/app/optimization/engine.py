@@ -39,9 +39,11 @@ class FormatScore:
     click_rate: float             # clicks per view (cpv) or per impression (cpc)
     cvr: float
     aov: float
-    audience_fit: float = 1.0     # 0.5 .. 1.5
+    objective: str = "Sales / Conversions"   # utility unit follows this objective
+    audience_fit: float = 1.0     # ~0.5 .. 1.5, centered at 1.0
     objective_fit: float = 1.0
     category_fit: float = 1.0
+    research_fit: float = 1.0     # live YouTube niche signal (1.0 = no live data)
     risk: float = 0.3
     sample_size: int = 0          # impressions worth of evidence behind metrics
     confidence: float = 0.35      # 0..1 overall confidence in this score
@@ -60,6 +62,7 @@ class Allocation:
     predicted: dict               # impressions/clicks/conversions/revenue/...
     confidence: float
     reason: str
+    fit_factors: dict = field(default_factory=dict)   # audience/objective/category/research
 
 
 @dataclass
@@ -103,14 +106,45 @@ def _revenue_rate(s: FormatScore) -> float:
     return f["revenue"]
 
 
+def _value_rate(s: FormatScore) -> tuple[float, str]:
+    """Objective-aligned value per currency unit spent.
+
+    The optimizer maximizes what the campaign is actually FOR — not always
+    revenue. Unit chosen by the selected marketing objective:
+      Video Views / Brand Awareness -> video views (engaged attention; in-feed
+          thumbnail impressions are NOT attention, so in-feed competes weakly here)
+      Website Traffic               -> clicks
+      Leads / Sales / anything else -> revenue (conversions × AOV)
+    Returns (value, unit_label) so explanations stay honest.
+    """
+    f = _funnel(1.0, s)
+    if s.objective in ("Video Views", "Brand Awareness"):
+        return f["video_views"], "video views"
+    if s.objective == "Website Traffic":
+        return f["clicks"], "clicks"
+    return f["revenue"], "revenue"
+
+
 def _utility(s: FormatScore) -> float:
+    value, _unit = _value_rate(s)
     return (
-        _revenue_rate(s)
+        value
         * s.audience_fit
         * s.objective_fit
         * s.category_fit
+        * s.research_fit
         * (1.0 - 0.5 * s.risk)
     )
+
+
+def _fit_factors(s: FormatScore) -> dict:
+    """Transparent fit decomposition surfaced in the API/UI."""
+    return {
+        "audience": round(s.audience_fit, 3),
+        "objective": round(s.objective_fit, 3),
+        "category": round(s.category_fit, 3),
+        "research": round(s.research_fit, 3),
+    }
 
 
 def _exploration_bonus(scores: list[FormatScore], bonus_scale: float) -> dict[str, float]:
@@ -158,11 +192,12 @@ def optimize_budget(
     if not scores:
         raise ValueError("at least one format score is required")
 
-    # strategy-dependent bounds
+    # strategy-dependent bounds — kept deliberately below "all-in" so no single
+    # format can absorb the whole budget and every plan stays diversified
     bounds_cfg = {
-        "balanced": (0.05, 0.65),
-        "performance": (0.02, 0.80),
-        "exploratory": (0.12, 0.55),
+        "balanced": (0.08, 0.55),
+        "performance": (0.03, 0.75),
+        "exploratory": (0.15, 0.50),
     }
     lo_share, hi_share = bounds_cfg.get(strategy, bounds_cfg["balanced"])
 
@@ -263,6 +298,7 @@ def optimize_budget(
             predicted=predicted,
             confidence=round(s.confidence, 2),
             reason=reason,
+            fit_factors=_fit_factors(s),
         ))
         for kk in ("impressions", "clicks", "video_views", "conversions", "revenue"):
             totals[kk] += f[kk]
@@ -300,12 +336,11 @@ def optimize_budget(
 
 
 def _explain(s: FormatScore, share: float, amount: float, utility: float, bonus: float, budget: float) -> str:
-    bits = [f"{share * 100:.0f}% share driven by"]
-    rate = _revenue_rate(s)
-    bits.append(
-        f"expected {rate:.2f} revenue per currency unit "
+    value, unit = _value_rate(s)
+    bits = [
+        f"{share * 100:.0f}% share — expected {value:.2f} {unit} per currency unit "
         f"({'CPV' if s.pricing_model == 'cpv' else 'CPC'} {s.unit_cost:g}, CVR {s.cvr * 100:.1f}%)"
-    )
+    ]
     if s.evidence:
         bits.append(s.evidence[0])
     if s.sample_size > 500:
@@ -316,6 +351,10 @@ def _explain(s: FormatScore, share: float, amount: float, utility: float, bonus:
         bits.append(f"audience fit ×{s.audience_fit:.2f}")
     if s.objective_fit != 1.0:
         bits.append(f"objective fit ×{s.objective_fit:.2f}")
+    if s.category_fit != 1.0:
+        bits.append(f"category fit ×{s.category_fit:.2f}")
+    if s.research_fit != 1.0:
+        bits.append(f"live YouTube niche signal ×{s.research_fit:.2f}")
     if bonus > 0.01:
         bits.append(f"exploration bonus +{bonus:.2f}")
     return "; ".join(bits) + "."
@@ -323,8 +362,10 @@ def _explain(s: FormatScore, share: float, amount: float, utility: float, bonus:
 
 def _methodology_text(strategy, cold_start, active, inactive, risk_aversion, exploration) -> str:
     lines = [
-        f"Strategy: {strategy}. Objective: maximize expected revenue subject to the exact budget, "
-        f"per-format share bounds and a risk-adjusted concentration penalty (λ={risk_aversion}).",
+        f"Strategy: {strategy}. Objective: maximize objective-aligned value "
+        f"(views for awareness/view campaigns, clicks for traffic, revenue for leads/sales) "
+        f"subject to the exact budget, per-format share bounds and a risk-adjusted "
+        f"concentration penalty (λ={risk_aversion}).",
         "Utilities combine: evidence-based funnel rates (historical aggregates blended with "
         "ML predictions where available, else cold-start priors), audience/objective/category fit "
         "multipliers, (1 − risk/2), and a UCB-style exploration bonus sqrt(ln N / n_i) "

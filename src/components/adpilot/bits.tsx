@@ -30,6 +30,23 @@ export function DataBadge({ label, className }: { label: string; className?: str
   );
 }
 
+/* ------------------------------------------------------- format constants */
+export const FORMAT_COLORS: Record<string, string> = {
+  in_stream: "#38bdf8",   // sky
+  shorts: "#34d399",      // emerald
+  in_feed: "#f59e0b",     // amber
+};
+
+export const FORMAT_SHORT: Record<string, string> = {
+  in_stream: "In-Stream",
+  shorts: "Shorts",
+  in_feed: "In-Feed",
+};
+
+export function formatColor(key: string): string {
+  return FORMAT_COLORS[key] ?? "#a78bfa";
+}
+
 /* --------------------------------------------------------------- formatters */
 export function fmtMoney(v: number | null | undefined, currency = "PKR", digits = 0) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";

@@ -2,19 +2,19 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Eye, MousePointerClick, ShoppingBag, Target, TrendingUp, Wallet } from "lucide-react";
+import { Eye, MousePointerClick, PlayCircle, ShoppingBag, Target, TrendingUp, Wallet, Youtube } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  CardsSkeleton, DataBadge, EmptyState, ErrorNote, SectionTitle,
+  CardsSkeleton, DataBadge, EmptyState, ErrorNote, SectionTitle, formatColor,
   fmtMoney, fmtNum, fmtPct,
 } from "@/components/adpilot/bits";
 import { pyFetch } from "@/lib/pyapi";
 import type { Analysis, Recommendation } from "@/lib/types";
 
-const PIE_COLORS = ["#34d399", "#38bdf8", "#f59e0b"];
+const TOOLTIP_STYLE = { background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 };
 
 interface DashboardResp {
   empty?: boolean;
@@ -28,6 +28,15 @@ interface DashboardResp {
   allocation?: Array<{ format_key: string; label: string; share: number; amount: number; confidence: number }>;
   predicted?: Recommendation["predicted_totals"];
   cold_start?: boolean;
+  research?: {
+    videos_found: number;
+    total_views: number;
+    median_views: number;
+    shorts_share: number;
+    avg_engagement_rate: number;
+    top_channels: Array<{ channel_id: string; title: string; subscribers: number }>;
+    is_live: boolean;
+  };
 }
 
 export function DashboardView({ analysisId, backendOk }: { analysisId: number | null; backendOk: boolean }) {
@@ -61,7 +70,7 @@ export function DashboardView({ analysisId, backendOk }: { analysisId: number | 
       <div className="p-4 lg:p-6">
         <EmptyState
           title="No analysis yet"
-          hint="Run your first product analysis — AdPilot will infer the audience, research YouTube, predict performance and optimize the budget."
+          hint="Run your first product analysis — AdPilot will infer the audience, research YouTube live, predict performance and optimize the budget."
         />
       </div>
     );
@@ -69,7 +78,17 @@ export function DashboardView({ analysisId, backendOk }: { analysisId: number | 
 
   const pt = dash.predicted;
   const hasPt = pt && Object.keys(pt).length > 0;
-  const pieData = (dash.allocation ?? []).map((a) => ({ name: a.label, value: Math.round(a.amount) }));
+  const pieData = (dash.allocation ?? []).map((a) => ({ name: a.label, key: a.format_key, value: Math.round(a.amount) }));
+  const funnelData = hasPt
+    ? ([
+        { stage: "Impressions", value: pt.impressions, fill: "#38bdf8" },
+        { stage: "Video views", value: pt.video_views ?? 0, fill: "#34d399" },
+        { stage: "Clicks", value: pt.clicks, fill: "#f59e0b" },
+        { stage: "Conversions", value: pt.conversions, fill: "#a78bfa" },
+      ] as const).filter((d) => Number(d.value) > 0)
+    : [];
+  const research = dash.research;
+  const researchLive = !!research?.is_live && (research?.videos_found ?? 0) > 0;
 
   return (
     <div className="space-y-6 p-4 lg:p-6">
@@ -110,22 +129,22 @@ export function DashboardView({ analysisId, backendOk }: { analysisId: number | 
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={3} strokeWidth={0}>
-                        {pieData.map((_, i) => (
-                          <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                        {pieData.map((d) => (
+                          <Cell key={d.key} fill={formatColor(d.key)} />
                         ))}
                       </Pie>
                       <Tooltip
-                        contentStyle={{ background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 }}
+                        contentStyle={TOOLTIP_STYLE}
                         formatter={(v: number, n: string) => [fmtMoney(v, dash.product?.currency), n]}
                       />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="mt-2 space-y-1.5">
-                  {dash.allocation?.map((a, i) => (
+                  {dash.allocation?.map((a) => (
                     <div key={a.format_key} className="flex items-center justify-between text-xs">
                       <span className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                        <span className="h-2 w-2 rounded-full" style={{ background: formatColor(a.format_key) }} />
                         {a.label}
                       </span>
                       <span className="font-medium">{(a.share * 100).toFixed(0)}% · {fmtMoney(a.amount, dash.product?.currency)}</span>
@@ -144,32 +163,30 @@ export function DashboardView({ analysisId, backendOk }: { analysisId: number | 
             <CardTitle className="text-sm font-medium">Predicted funnel</CardTitle>
           </CardHeader>
           <CardContent>
-            {hasPt ? (
+            {funnelData.length ? (
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={[
-                      { stage: "Impressions", value: pt.impressions },
-                      { stage: "Video views", value: pt.video_views },
-                      { stage: "Clicks", value: pt.clicks },
-                      { stage: "Conversions", value: pt.conversions },
-                    ]}
-                  >
-                    <defs>
-                      <linearGradient id="funnelFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#34d399" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="#34d399" stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" />
-                    <XAxis dataKey="stage" tick={{ fill: "#7c8db0", fontSize: 11 }} axisLine={{ stroke: "#1c2a44" }} tickLine={false} />
-                    <YAxis tick={{ fill: "#7c8db0", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtNum(v)} width={62} />
+                  <BarChart data={funnelData} layout="vertical" margin={{ left: 8, right: 28 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1c2a44" horizontal={false} />
+                    <XAxis type="number" tick={{ fill: "#7c8db0", fontSize: 11 }} axisLine={{ stroke: "#1c2a44" }} tickLine={false} tickFormatter={(v) => fmtNum(v)} />
+                    <YAxis type="category" dataKey="stage" width={92} tick={{ fill: "#c3cfe6", fontSize: 11 }} axisLine={false} tickLine={false} />
                     <Tooltip
-                      contentStyle={{ background: "#0c1526", border: "1px solid #1c2a44", borderRadius: 8, fontSize: 12 }}
+                      contentStyle={TOOLTIP_STYLE}
                       formatter={(v: number) => [fmtNum(v, 1), "MODEL PREDICTION"]}
+                      cursor={{ fill: "rgba(56,189,248,0.06)" }}
                     />
-                    <Area type="monotone" dataKey="value" stroke="#34d399" strokeWidth={2} fill="url(#funnelFill)" />
-                  </AreaChart>
+                    <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={34}>
+                      {funnelData.map((d) => (
+                        <Cell key={d.stage} fill={d.fill} />
+                      ))}
+                      <LabelList
+                        dataKey="value"
+                        position="right"
+                        formatter={(v: number) => fmtNum(v)}
+                        style={{ fill: "#c3cfe6", fontSize: 11 }}
+                      />
+                    </Bar>
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             ) : (
@@ -185,6 +202,37 @@ export function DashboardView({ analysisId, backendOk }: { analysisId: number | 
           </CardContent>
         </Card>
       </div>
+
+      {/* Live market signals — REAL public YouTube data for this product */}
+      <Card>
+        <CardHeader className="pb-1">
+          <SectionTitle
+            title="Live market signals"
+            desc="Public YouTube content captured for this product by the live research step. These numbers move the optimizer's allocation — a Shorts-heavy, highly engaged niche shifts budget toward Shorts."
+            label={researchLive ? "LIVE DATA" : "NO DATA"}
+          />
+        </CardHeader>
+        <CardContent>
+          {researchLive && research ? (
+            <div className="grid gap-4 lg:grid-cols-4">
+              <LiveStat icon={<PlayCircle className="h-4 w-4 text-sky-400" />} title="Videos found" value={fmtNum(research.videos_found)} />
+              <LiveStat icon={<Eye className="h-4 w-4 text-emerald-400" />} title="Combined public views" value={fmtNum(research.total_views)} />
+              <LiveStat icon={<Youtube className="h-4 w-4 text-rose-400" />} title="Shorts-length share" value={`${Math.round((research.shorts_share ?? 0) * 100)}%`} />
+              <LiveStat
+                icon={<TrendingUp className="h-4 w-4 text-amber-400" />}
+                title="Median engagement"
+                value={`${((research.avg_engagement_rate ?? 0) * 100).toFixed(2)}%`}
+                sub="(likes + comments) / views"
+              />
+            </div>
+          ) : (
+            <EmptyState
+              title="No live research rows yet"
+              hint="Configure YOUTUBE_API_KEY in backend/.env and re-run the analysis — the niche signals above then feed the optimizer as LIVE DATA."
+            />
+          )}
+        </CardContent>
+      </Card>
 
       {analysis ? (
         <Card>
@@ -235,6 +283,19 @@ function KpiCard({ title, value, sub, icon, label }: {
         {sub ? <p className="text-xs text-muted-foreground">{sub}</p> : <span />}
         {label ? <DataBadge label={label} /> : null}
       </div>
+    </div>
+  );
+}
+
+function LiveStat({ icon, title, value, sub }: { icon: React.ReactNode; title: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-lg border bg-secondary/30 p-3">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {icon}
+        {title}
+      </div>
+      <p className="mt-1 text-lg font-semibold">{value}</p>
+      {sub ? <p className="text-[11px] text-muted-foreground">{sub}</p> : null}
     </div>
   );
 }

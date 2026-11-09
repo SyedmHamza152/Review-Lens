@@ -120,9 +120,9 @@ export default function Page() {
         {showChrome ? (
           <Topbar
             backendOk={backendOk}
-            productName={active?.product.name}
+            productName={active?.product?.name}
             budgetLabel={
-              active
+              active?.product
                 ? `${active.product.currency} ${active.product.total_budget.toLocaleString()}`
                 : undefined
             }
@@ -144,7 +144,7 @@ export default function Page() {
           ) : (
             <AppViews
               viewKey={view.key}
-              analysisId={activeId}
+              analysisId={activeId ?? null}
               backendOk={backendOk}
               onAnalysisChanged={(id) => setAnalysisId(id)}
             />

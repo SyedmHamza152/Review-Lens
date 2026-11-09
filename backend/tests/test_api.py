@@ -184,3 +184,39 @@ def test_openapi_available(app_client):
     for expected in ("/api/v1/health", "/api/v1/products", "/api/v1/analyses",
                      "/api/v1/bigdata/benchmark", "/api/v1/ml/models", "/api/v1/reports"):
         assert expected in paths, f"missing {expected}"
+
+
+def test_duration_plan_endpoint(app_client, db_session):
+    """Duration intelligence: per-format best duration, curves, honest labels."""
+    from app.models.analysis import ProductAnalysis
+
+    a = db_session.get(ProductAnalysis, 1)
+    r = app_client.get(f"/api/v1/analyses/{a.id}/durations")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["objective"]
+    assert {r["format_key"] for r in body["recommendations"]} == {"in_stream", "shorts", "in_feed"}
+    for rec in body["recommendations"]:
+        assert rec["best"]["duration_key"]
+        assert 0 < rec["best"]["score"] <= 0.98
+        assert 0 < rec["best"]["expected_hold_rate"] <= 100
+    assert body["overall_best"]["seconds"] > 0
+    assert body["retention_curves"] and body["retention_curves"][0]["points"]
+    assert body["data_source_label"] in ("LIVE DATA", "MODEL PREDICTION")
+    # live bucket stats must be honestly labeled
+    assert body["live_research"]["label"] in ("LIVE DATA", "NO DATA")
+
+
+def test_duration_varies_by_objective(app_client, db_session):
+    """Different objectives must be able to prefer different ad lengths."""
+    from app.models.analysis import ProductAnalysis
+    from app.services.duration_engine import compute_duration_plan
+
+    a = db_session.get(ProductAnalysis, 1)
+    a.objective = "Video Views"
+    plan_views = compute_duration_plan(db_session, a)
+    a.objective = "Leads"
+    plan_leads = compute_duration_plan(db_session, a)
+    best_views = {r["format_key"]: r["best"]["duration_key"] for r in plan_views["recommendations"]}
+    best_leads = {r["format_key"]: r["best"]["duration_key"] for r in plan_leads["recommendations"]}
+    assert best_views != best_leads, "duration plan must respond to the objective"
